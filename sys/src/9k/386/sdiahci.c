@@ -1976,7 +1976,7 @@ didtype(Pcidev *p)
 			return Tich;
 		break;
 	case 0x1002:
-		if(p->did == 0x4380 || p->did == 0x4390 || p->did == 0x4391){
+		if(p->did == 0x4380 || p->did == 0x4390 || p->did == 0x4391 || p->did == 0x4394){
 			print("detected sb600 vid %#ux did %#ux\n", p->vid, p->did);
 			return Tsb600;
 		}

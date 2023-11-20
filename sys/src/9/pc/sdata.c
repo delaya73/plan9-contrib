@@ -2041,6 +2041,8 @@ atapnp(void)
 		case (0x0055<<16)|0x10DE:	/* nVidia nForce4 SATA */
 		case (0x0266<<16)|0x10DE:	/* nVidia nForce4 430 SATA */
 		case (0x0267<<16)|0x10DE:	/* nVidia nForce 55 MCP SATA */
+		case (0x036E<<16)|0x10DE:	/* nVidia nForce 55 MCP IDE */
+		case (0x037F<<16)|0x10DE:	/* nVidia nForce 55 MCP SATA */
 		case (0x03EC<<16)|0x10DE:	/* nVidia nForce 61 MCP SATA */
 		case (0x0448<<16)|0x10DE:	/* nVidia nForce 65 MCP SATA */
 		case (0x0560<<16)|0x10DE:	/* nVidia nForce 69 MCP SATA */
