@@ -996,6 +996,7 @@ dumpmadt(Madt *apics)
 			DBG("\tlx2apic puid %d id %d\n", st->lx2apic.puid, st->lx2apic.id);
 			break;
 		case ASlx2nmi:
+		case ASlx2nmi255:
 			DBG("\tlx2nmi puid %d intr %d flags %#ux\n",
 				st->lx2nmi.puid, st->lx2nmi.intr, st->lx2nmi.flags);
 			break;
@@ -1104,6 +1105,7 @@ acpimadt(uchar *p, int len)
 			}
 			break;
 		case ASlx2nmi:
+		case ASlx2nmi255:
 			st->lx2nmi.flags = l16get(p+2);
 			st->lx2nmi.puid = l32get(p+4);
 			st->lx2nmi.intr = p[8];

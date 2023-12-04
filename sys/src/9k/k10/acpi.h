@@ -59,6 +59,7 @@ enum
 	ASintsrc,	/* platform interrupt sources */
 	ASlx2apic,	/* local x2 apic */
 	ASlx2nmi,	/* local x2 apic NMI */
+	ASlx2nmi255 = 255,	/* local x2 apic NMI */
 
 	/* Apic flags */
 	AFbus	= 0,	/* polarity/trigger like in ISA */
