@@ -685,6 +685,7 @@ static Bridge southbridges[] = {
 	{ 0x10DE, 0x00E0, nil, nil },		/* NVIDIA nForce 3 250 Series */
 	{ 0x10DE, 0x00E1, nil, nil },		/* NVIDIA nForce 3 250 Series */
 	{ 0x10DE, 0x0364, nil, nil },		/* NVIDIA MCP55 LPC Bridge */
+	{ 0x10DE, 0x0370, nil, nil },		/* NVIDIA MCP55 PCI Bridge */
 	{ 0x1166, 0x0200, nil, nil },		/* ServerWorks ServerSet III LE */
 	{ 0x1002, 0x4377, nil, nil },		/* ATI Radeon Xpress 200M */
 	{ 0x1002, 0x4372, nil, nil },		/* ATI SB400 */
