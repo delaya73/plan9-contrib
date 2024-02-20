@@ -649,6 +649,7 @@ static Bridge southbridges[] = {
 	{ 0x8086, 0x2420, pIIxget, pIIxset },	/* Intel 82801AB */
 	{ 0x8086, 0x2440, pIIxget, pIIxset },	/* Intel 82801BA */
 	{ 0x8086, 0x2448, pIIxget, pIIxset },	/* Intel 82801BAM/CAM/DBM */
+	{ 0x8086, 0x27bc, pIIxget, pIIxset },	/* Intel 82801BAM/CAM/DBM */
 	{ 0x8086, 0x244c, pIIxget, pIIxset },	/* Intel 82801BAM */
 	{ 0x8086, 0x244e, pIIxget, pIIxset },	/* Intel 82801 */
 	{ 0x8086, 0x2480, pIIxget, pIIxset },	/* Intel 82801CA */
