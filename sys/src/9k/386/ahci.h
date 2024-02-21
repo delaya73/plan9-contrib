@@ -164,6 +164,7 @@ enum {
 	Ast	= 1<<0,		/* start */
 
 	Arun	= Ast|Acr|Afre|Afr,
+	Apwr	= Apod|Asud,
 };
 
 /* ctl register bits */

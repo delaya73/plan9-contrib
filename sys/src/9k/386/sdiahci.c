@@ -31,7 +31,7 @@ enum {
 	Nms	= 256,			/* ms. between drive checks */
 	Mphywait=  2*1024/Nms - 1,
 	Midwait	= 16*1024/Nms - 1,
-	Mcomrwait= 64*1024/Nms - 1,
+	Mcomrwait= 1*1024/Nms - 1,
 
 	Obs	= 0xa0,			/* obsolete device bits */
 
@@ -707,7 +707,7 @@ ahciwakeup(Aport *p)
 	p->sctl = 3*Aipm | 0*Aspd | Adet;
 	delay(1);
 	p->sctl &= ~7;
-//	iprint("ahci: wake %#ux -> %#ux\n", s, p->sstatus);
+	iprint("ahci: wake %#ux -> %#lux\n", s, p->sstatus);
 }
 
 static int
@@ -725,6 +725,11 @@ ahciconfigdrive(Drive *d)
 		setupfis(&pm->fis);
 		pm->list = malign(sizeof *pm->list, 1024);
 		pm->ctab = malign(sizeof *pm->ctab, 128);
+	}
+
+	if(ahciidle(p) == -1){
+		dprint("ahci: port not idle\n");
+		return -1;
 	}
 
 	if (d->unit)
@@ -745,7 +750,9 @@ ahciconfigdrive(Drive *d)
 	p->listhi = PCIWADDRH(pm->list);
 	p->fis = PCIWADDRL(pm->fis.base);
 	p->fishi = PCIWADDRH(pm->fis.base);
-	p->cmd |= Afre|Ast;
+
+	if((p->cmd & Apwr) != Apwr)
+		p->cmd |= Apwr;
 
 	/* drive coming up in slumbering? */
 	if((p->sstatus & Devdet) == Devpresent &&
@@ -758,6 +765,8 @@ ahciconfigdrive(Drive *d)
 	p->cmd &= ~Aalpe;
 
 	p->ie = IEM;
+
+	p->cmd |= Afre|Ast;
 
 	return 0;
 }
@@ -811,9 +820,9 @@ ahcihbareset(Ahba *h)
 {
 	int wait;
 
-	h->ghc |= 1;
+	h->ghc |= Hhr;
 	for(wait = 0; wait < 1000; wait += 100){
-		if(h->ghc == 0)
+		if((h->ghc & Hhr) == 0)
 			return 0;
 		delay(100);
 	}
@@ -1211,9 +1220,12 @@ checkdrive(Drive *d, int i)
 			if(++d->wait&Mphywait)
 				break;
 reset:
-			if(++d->mode > DMsataii)
-				d->mode = 0;
-			if(d->mode == DMsatai){	/* we tried everything */
+			if(d->mode == 0)
+				d->mode = (d->ctlr->hba->cap & 0xf*Hiss)/Hiss;
+			else
+				d->mode--;
+			if(d->mode == DMautoneg){
+				d->wait = 0;
 				d->state = Dportreset;
 				goto portreset;
 			}
@@ -1242,7 +1254,6 @@ reset:
 	case Doffline:
 		if(d->wait++ & Mcomrwait)
 			break;
-		/* fallthrough */
 	case Derror:
 	case Dreset:
 		dprint("%s: reset [%s]: mode %d; status %06#ux\n",
@@ -1253,9 +1264,12 @@ reset:
 		break;
 	case Dportreset:
 portreset:
-		if(d->wait++ & 0xff && (s & Intactive) == 0)
+		if(d->wait++ & Mcomrwait)
 			break;
-		/* device is active */
+		if(d->wait > Mcomrwait && (s & Intactive) == 0){
+			d->state = Dnull;	/* stuck in portreset */
+			break;
+		}
 		dprint("%s: portreset [%s]: mode %d; status %06#ux\n",
 			name, diskstates[d->state], d->mode, s);
 		d->portm.flag |= Ferror;
@@ -1279,6 +1293,8 @@ satakproc(void*)
 {
 	int i;
 
+	while(waserror())
+		;
 	for(;;){
 		tsleep(&up->sleep, return0, 0, Nms);
 		for(i = 0; i < niadrive; i++)
@@ -1926,31 +1942,24 @@ retry:
 	return SDok;
 }
 
-/*
- * configure drives 0-5 as ahci sata (c.f. errata).
- * what about 6 & 7, as claimed by marvell 0x9123?
- */
-static int
-iaahcimode(Pcidev *p)
-{
-	dprint("iaahcimode: %#ux %#ux %#ux\n", pcicfgr8(p, 0x91), pcicfgr8(p, 92),
-		pcicfgr8(p, 93));
-	pcicfgw16(p, 0x92, pcicfgr16(p, 0x92) | 0x3f);	/* ports 0-5 */
-	return 0;
-}
-
 static void
 iasetupahci(Ctlr *c)
 {
+	if(c->type != Tich)
+		return;
+	
 	/* disable cmd block decoding. */
 	pcicfgw16(c->pci, 0x40, pcicfgr16(c->pci, 0x40) & ~(1<<15));
 	pcicfgw16(c->pci, 0x42, pcicfgr16(c->pci, 0x42) & ~(1<<15));
 
 	c->lmmio[0x4/4] |= 1 << 31;	/* enable ahci mode (ghc register) */
-	c->lmmio[0xc/4] = (1 << 6) - 1;	/* 5 ports. (supposedly ro pi reg.) */
+	c->lmmio[0xc/4] = (1 << 6) - 1;	/* 6 ports. (supposedly ro pi reg.) */
 
 	/* enable ahci mode and 6 ports; from ich9 datasheet */
 	pcicfgw16(c->pci, 0x90, 1<<6 | 1<<5);
+
+	/* configure drives 0-5 as ahci sata  (c.f. errata) */
+	pcicfgw16(c->pci, 0x92, pcicfgr16(c->pci, 0x92) | 0xf);
 }
 
 static int
@@ -2036,7 +2045,7 @@ newctlr(Ctlr *ctlr, SDev *sdev, int nunit)
 			return -1;
 		}
 	for(i = 0; i < n; i++){
-		ctlr->drive[i]->mode = DMsatai;
+		ctlr->drive[i]->mode = DMautoneg;
 		configdrive(ctlr->drive[i]);
 	}
 	return n;
@@ -2059,9 +2068,12 @@ iapnp(void)
 	p = nil;
 	head = tail = nil;
 	while((p = pcimatch(p, 0, 0)) != nil){
-		type = didtype(p);
-		if (type == -1 || p->mem[Abar].bar == 0)
+		if((type = didtype(p)) == -1)
 			continue;
+		io = p->mem[Abar].bar;
+		if(io == 0 || (io & 1) != 0 || p->mem[Abar].size < 0x180)
+			continue;
+		io &= ~0xf;
 		if(niactlr == NCtlr){
 			print("ahci: iapnp: %s: too many controllers\n",
 				tname[type]);
@@ -2071,7 +2083,6 @@ iapnp(void)
 		s = sdevs  + niactlr;
 		memset(c, 0, sizeof *c);
 		memset(s, 0, sizeof *s);
-		io = p->mem[Abar].bar & ~0xf;
 		c->physio = (uchar *)io;
 		c->mmio = vmap(io, p->mem[Abar].size);
 		if(c->mmio == 0){
@@ -2088,12 +2099,10 @@ iapnp(void)
 		s->ctlr = c;
 		c->sdev = s;
 
-		if(Intel(c) && p->did != 0x2681)
+		if(p->vid == 0x8086)
 			iasetupahci(c);
 		nunit = ahciconf(c);
 //		ahcihbareset((Ahba*)c->mmio);
-		if(Intel(c) && iaahcimode(p) == -1)
-			break;
 		if(nunit < 1){
 			vunmap(c->mmio, p->mem[Abar].size);
 			continue;
