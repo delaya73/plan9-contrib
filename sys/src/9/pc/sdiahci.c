@@ -28,6 +28,8 @@ enum {
 	Read	= 0,
 	Write,
 
+	Eesb	= 1<<0,	/* must have (Eesb & Emtype) == 0 */
+
 	Nms	= 256,			/* ms. between drive checks */
 	Mphywait=  2*1024/Nms - 1,
 	Midwait	= 16*1024/Nms - 1,
@@ -169,6 +171,8 @@ struct Ctlr {
 	uchar	*mmio;
 	ulong	*lmmio;
 	Ahba	*hba;
+	Aenc;
+	uint	enctype;
 
 	/* phyical register address */
 	uchar	*physio;
@@ -311,12 +315,14 @@ static void
 listsetup(Aportc *pc, int flags)
 {
 	Alist *list;
+	uvlong pa;
 
 	list = pc->pm->list;
 	list->flags = flags | 5;
 	list->len = 0;
-	list->ctab = PCIWADDR(pc->pm->ctab);
-	list->ctabhi = 0;
+	pa = PCIWADDR(pc->pm->ctab);
+	list->ctab = pa;
+	list->ctabhi = pa>>32;
 }
 
 static int
@@ -489,15 +495,17 @@ ahciidentify0(Aportc *pc, void *id, int atapi)
 	uchar *c;
 	Aprdt *p;
 	static uchar tab[] = { 0xec, 0xa1, };
+	uvlong pa;
 
 	c = cfissetup(pc);
 	c[2] = tab[atapi];
 	listsetup(pc, 1<<16);
 
 	memset(id, 0, 0x100);			/* magic */
+	pa = PCIWADDR(id);
 	p = &pc->pm->ctab->prdt;
-	p->dba = PCIWADDR(id);
-	p->dbahi = 0;
+	p->dba = pa;
+	p->dbahi = pa>>32;
 	p->count = 1<<31 | (0x200-2) | 1;
 	return ahciwait(pc, 3*1000);
 }
@@ -819,6 +827,23 @@ ahciconf(Ctlr *ctlr)
 		(u>>27) & 1, (u>>8) & 0x1f, (u>>7) & 1,
 		(u & 0x1f) + 1, (u>>25) & 1, (u>>24) & 1, (u>>6) & 1);
 	return countbits(h->pi);
+}
+
+static int
+ahcihandoff(Ahba *h)
+{
+	int wait;
+
+	if((h->cap2 & Boh) == 0)
+		return 0;
+	h->bios |= Oos;
+	for(wait = 0; wait < 2000; wait += 100){
+		if((h->bios & Bos) == 0)
+			return 0;
+		delay(100);
+	}
+	iprint("ahci: bios handoff timed out\n");
+	return -1;
 }
 
 static int
@@ -1475,7 +1500,6 @@ iaenable(SDev *s)
 		}
 		if(c->ndrive == 0)
 			panic("iaenable: zero s->ctlr->ndrive");
-		pcisetbme(c->pci);
 		snprint(name, sizeof name, "%s (%s)", s->name, s->ifc->name);
 		intrenable(c->pci->intl, iainterrupt, c, c->pci->tbdf, name);
 		/* supposed to squelch leftover interrupts here. */
@@ -1543,6 +1567,7 @@ ahcibuild(Drive *d, uchar *cmd, void *data, int n, vlong lba)
 	Aportm *pm;
 	Aprdt *p;
 	static uchar tab[2][2] = { 0xc8, 0x25, 0xca, 0x35, };
+	uvlong pa;
 
 	pm = &d->portm;
 	dir = *cmd == ScmdExtwrite || *cmd == ScmdWrite16;
@@ -1581,12 +1606,14 @@ ahcibuild(Drive *d, uchar *cmd, void *data, int n, vlong lba)
 	if(dir == Write)
 		l->flags |= Lwrite;
 	l->len = 0;
-	l->ctab = PCIWADDR(t);
-	l->ctabhi = 0;
+	pa = PCIWADDR(t);
+	l->ctab = pa;
+	l->ctabhi = pa>>32;
 
+	pa = PCIWADDR(data);
 	p = &t->prdt;
-	p->dba = PCIWADDR(data);
-	p->dbahi = 0;
+	p->dba = pa;
+	p->dbahi = pa>>32;
 	if(d->unit == nil)
 		panic("ahcibuild: nil d->unit");
 	p->count = 1<<31 | (d->unit->secsize*n - 2) | 1;
@@ -1602,6 +1629,7 @@ ahcibuildpkt(Aportm *pm, SDreq *r, void *data, int n)
 	Alist *l;
 	Actab *t;
 	Aprdt *p;
+	uvlong pa;
 
 	qlock(pm);
 	l = pm->list;
@@ -1635,15 +1663,17 @@ ahcibuildpkt(Aportm *pm, SDreq *r, void *data, int n)
 	if(r->write != 0 && data)
 		l->flags |= Lwrite;
 	l->len = 0;
-	l->ctab = PCIWADDR(t);
-	l->ctabhi = 0;
+	pa = PCIWADDR(t);
+	l->ctab = pa;
+	l->ctabhi = pa>>32;
 
 	if(data == 0)
 		return l;
 
+	pa = PCIWADDR(data);
 	p = &t->prdt;
-	p->dba = PCIWADDR(data);
-	p->dbahi = 0;
+	p->dba = pa;
+	p->dbahi = pa>>32;
 	p->count = 1<<31 | (n - 2) | 1;
 
 	return l;
@@ -1969,6 +1999,57 @@ iasetupahci(Ctlr *c)
 }
 
 static int
+esbenc(Ctlr *c)
+{
+	c->encsz = 1;
+	c->enctx = (ulong*)(c->mmio + 0xa0);
+	c->enctype = Eesb;
+	c->enctx[0] = 0;
+	return 0;
+}
+
+static int
+ahciencinit(Ctlr *c)
+{
+	ulong type, sz, o, *bar;
+	Ahba *h;
+
+	h = c->hba;
+	if(c->type == Tesb)
+		return esbenc(c);
+	if((h->cap & Hems) == 0)
+		return -1;
+	type = h->emctl & Emtype;
+	switch(type){
+	case Esgpio:
+	case Eses2:
+	case Esafte:
+		return -1;
+	case Elmt:
+		break;
+	default:
+		return -1;
+	}
+
+	sz = h->emloc & 0xffff;
+	o = h->emloc>>16;
+	if(sz == 0 || o == 0)
+		return -1;
+	bar = c->lmmio;
+	dprint("size = %.4lux; loc = %.4lux*4\n", sz, o);
+	c->encsz = sz;
+	c->enctx = bar + o;
+	if((h->emctl & Xonly) == 0){
+		if(h->emctl & Smb)
+			c->encrx = bar + o;
+		else
+			c->encrx = bar + o*2;
+	}
+	c->enctype = type;
+	return 0;
+}
+
+static int
 didtype(Pcidev *p)
 {
 	switch(p->vid){
@@ -2014,6 +2095,7 @@ static int
 newctlr(Ctlr *ctlr, SDev *sdev, int nunit)
 {
 	int i, n;
+	ulong io;
 	Drive *drive;
 
 	ctlr->ndrive = sdev->nunit = nunit;
@@ -2038,13 +2120,17 @@ newctlr(Ctlr *ctlr, SDev *sdev, int nunit)
 		drive->ctlr = ctlr;
 		if((ctlr->hba->pi & (1<<i)) == 0)
 			continue;
-		drive->port = (Aport*)(ctlr->mmio + 0x80*i + 0x100);
+		io = 0x100 + 0x80*i;
+		if((io + 0x80) > ctlr->pci->mem[Abar].size)
+			continue;
+		drive->port = (Aport*)(ctlr->mmio + io);
 		drive->portc.p = drive->port;
 		drive->portc.pm = &drive->portm;
 		drive->driveno = n++;
 		ctlr->drive[drive->driveno] = drive;
 		iadrive[niadrive + drive->driveno] = drive;
 	}
+	pcisetbme(ctlr->pci);
 	for(i = 0; i < n; i++)
 		if(ahciidle(ctlr->drive[i]->port) == -1){
 			dprint("ahci: %s: port %d wedged; abort\n",
@@ -2055,6 +2141,8 @@ newctlr(Ctlr *ctlr, SDev *sdev, int nunit)
 		ctlr->drive[i]->mode = DMautoneg;
 		configdrive(ctlr->drive[i]);
 	}
+	ahciencinit(ctlr);
+	
 	return n;
 }
 
@@ -2092,7 +2180,7 @@ iapnp(void)
 		memset(s, 0, sizeof *s);
 		c->physio = (uchar *)io;
 		c->mmio = vmap(io, p->mem[Abar].size);
-		if(c->mmio == 0){
+		if(c->mmio == nil){
 			print("ahci: %s: address %#luX in use did=%#x\n",
 				Tname(c), io, p->did);
 			continue;
@@ -2106,10 +2194,10 @@ iapnp(void)
 		s->ctlr = c;
 		c->sdev = s;
 
+		ahcihandoff((Ahba*)c->mmio);
 		if(p->vid == 0x8086)
 			iasetupahci(c);
 		nunit = ahciconf(c);
-//		ahcihbareset((Ahba*)c->mmio);
 		if(nunit < 1){
 			vunmap(c->mmio, p->mem[Abar].size);
 			continue;

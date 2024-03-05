@@ -77,6 +77,35 @@ enum {
 	Hhr	= 1<<0,		/* hba reset */
 };
 
+/* cap2 bits */
+enum {
+	Apts	= 1<<2,	/* automatic partial to slumber */
+	Nvmp	= 1<<1,	/* nvmhci present; nvram */
+	Boh	= 1<<0,	/* bios/os handoff supported */
+};
+
+/* bios bits */
+enum {
+	Bos	= 1<<0,
+	Oos	= 1<<1,
+};
+
+/* emctl bits */
+enum {
+	Pm	= 1<<27,	/* port multiplier support */
+	Alhd	= 1<<26,	/* activity led hardware driven */
+	Xonly	= 1<<25,	/* rx messages not supported */
+	Smb	= 1<<24,	/* single msg buffer; rx limited */
+	Esgpio	= 1<<19,	/* sgpio messages supported */
+	Eses2	= 1<<18,	/* ses-2 supported */
+	Esafte	= 1<<17,	/* saf-te supported */
+	Elmt	= 1<<16,	/* led msg types support */
+	Emrst	= 1<<9,	/* reset all em logic */
+	Tmsg	= 1<<8,	/* transmit message */
+	Mr	= 1<<0,	/* message rx'd */
+	Emtype	= Esgpio | Eses2 | Esafte | Elmt,
+};
+
 typedef struct {
 	ulong	cap;
 	ulong	ghc;
@@ -87,6 +116,8 @@ typedef struct {
 	ulong	cccports;
 	ulong	emloc;
 	ulong	emctl;
+	ulong	cap2;
+	ulong	bios;
 } Ahba;
 
 enum {
@@ -172,6 +203,33 @@ enum {
 	Aipm	= 1<<8,		/* interface power mgmt. 3=off */
 	Aspd	= 1<<4,
 	Adet	= 1<<0,		/* device detection */
+};
+
+/* sstatus register bits */
+enum{
+	/* sstatus det */
+	Smissing		= 0<<0,
+	Spresent		= 1<<0,
+	Sphylink		= 3<<0,
+	Sbist		= 4<<0,
+	Smask		= 7<<0,
+
+	/* sstatus speed */
+	Gmissing		= 0<<4,
+	Gi		= 1<<4,
+	Gii		= 2<<4,
+	Giii		= 3<<4,
+	Gmask		= 7<<4,
+
+	/* sstatus ipm */
+	Imissing		= 0<<8,
+	Iactive		= 1<<8,
+	Isleepy		= 2<<8,
+	Islumber		= 6<<8,
+	Imask		= 7<<8,
+
+	SImask		= Smask | Imask,
+	SSmask		= Smask | Isleepy,
 };
 
 #define	sstatus	scr0
@@ -262,6 +320,12 @@ typedef struct {
 	uchar	pad[0x30];
 	Aprdt	prdt;
 } Actab;
+
+typedef struct {
+	uint	encsz;
+	ulong	*enctx;
+	ulong	*encrx;
+} Aenc;
 
 enum {
 	Ferror	= 1,
