@@ -141,7 +141,7 @@ enum {
 
 	IEM	= Acpds|Atfes|Ahbds|Ahbfs|Ahbds|Aifs|Ainfs|Aprcs|Apcs|Adps|
 			Aufs|Asdbs|Adss|Adhrs,
-	Ifatal	= Atfes|Ahbfs|Ahbds|Aifs,
+	Ifatal	= Ahbfs|Ahbds|Aifs,
 };
 
 /* serror bits */
@@ -178,6 +178,8 @@ enum {
 	Aalpe 	= 1<<26,	/* aggressive link pm enable */
 	Adlae	= 1<<25,	/* drive led on atapi */
 	Aatapi	= 1<<24,	/* device is atapi */
+	Apste	= 1<<23,	/* automatic slumber to partial cap */
+	Afbsc	= 1<<22,	/* fis-based switching capable */
 	Aesp	= 1<<21,	/* external sata port */
 	Acpd	= 1<<20,	/* cold presence detect */
 	Ampsp	= 1<<19,	/* mechanical pres. */
@@ -203,33 +205,6 @@ enum {
 	Aipm	= 1<<8,		/* interface power mgmt. 3=off */
 	Aspd	= 1<<4,
 	Adet	= 1<<0,		/* device detection */
-};
-
-/* sstatus register bits */
-enum{
-	/* sstatus det */
-	Smissing		= 0<<0,
-	Spresent		= 1<<0,
-	Sphylink		= 3<<0,
-	Sbist		= 4<<0,
-	Smask		= 7<<0,
-
-	/* sstatus speed */
-	Gmissing		= 0<<4,
-	Gi		= 1<<4,
-	Gii		= 2<<4,
-	Giii		= 3<<4,
-	Gmask		= 7<<4,
-
-	/* sstatus ipm */
-	Imissing		= 0<<8,
-	Iactive		= 1<<8,
-	Isleepy		= 2<<8,
-	Islumber		= 6<<8,
-	Imask		= 7<<8,
-
-	SImask		= Smask | Imask,
-	SSmask		= Smask | Isleepy,
 };
 
 #define	sstatus	scr0
