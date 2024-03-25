@@ -358,18 +358,32 @@ setfeatures(Aportc *pc, uchar f)
 	return ahciwait(pc, 3*1000);
 }
 
+/*
+ * ata 7, required for sata, requires that all devices "support"
+ * udma mode 5,   however sata:pata bridges allow older devices
+ * which may not.  the innodisk satadom, for example allows
+ * only udma mode 2.  on the assumption that actual udma is
+ * taking place on these bridges, we set the highest udma mode
+ * available, or pio if there is no udma mode available.
+ */
 static int
 setudmamode(Aportc *pc, uchar f)
 {
 	uchar *c;
+	int m;
 
 	/* hack */
 	if((pc->p->sig >> 16) == 0xeb14)
 		return 0;
+	m = 0x40;
+	if(f == 0xff){
+		f = 0;
+		m = 0;
+	}
 	c = cfissetup(pc);
 	c[2] = 0xef;
 	c[3] = 3;		/* set transfer mode */
-	c[12] = 0x40 | f;	/* sector count */
+	c[12] = m | f;	/* sector count */
 	listsetup(pc, Lwrite);
 	return ahciwait(pc, 3*1000);
 }
@@ -539,11 +553,18 @@ ahciidentify(Aportc *pc, ushort *id)
 		return -1;
 
 	i = gbit16(id+83) | gbit16(id+86);
-	if(i & (1<<10)){
+	if(i & Illba){
 		pm->feat |= Dllba;
 		s = gbit64(id+100);
 	}else
 		s = gbit32(id+60);
+
+	i = gbit16(id + 49);
+	pm->udma = 0xff;
+	if(i & Idmasp)
+		if(gbit16(id + 53) & 4)
+			for(i = gbit16(id + 88) & 0x7f; i; i >>= 1)
+				pm->udma++;
 
 	if(pm->feat&Datapi){
 		i = gbit16(id+0);
@@ -686,7 +707,7 @@ ahcirecover(Aportc *pc)
 {
 	ahciswreset(pc);
 	pc->p->cmd |= Ast;
-	if(setudmamode(pc, 5) == -1)
+	if(setudmamode(pc, pc->pm->udma) == -1)
 		return -1;
 	return 0;
 }
@@ -1162,7 +1183,7 @@ newdrive(Drive *d)
 	if(d->port->task == 0x80)
 		return -1;
 	qlock(c->pm);
-	if(setudmamode(c, 5) == -1){
+	if(setudmamode(c, pm->udma) == -1){
 		dprint("%s: can't set udma mode\n", name);
 		goto lose;
 	}
@@ -2347,6 +2368,7 @@ print("iarctl: nil u->dev->ctlr\n");
 				smarttab[d->portm.smart]);
 		p = seprint(p, e, "flag\t");
 		p = pflag(p, e, d->portm.feat);
+		p = seprint(p, e, "udma\t%d\n", d->portm.udma);
 	}else
 		p = seprint(p, e, "no disk present [%s]\n", diskstates[d->state]);
 	serrstr(o->serror, buf, buf + sizeof buf - 1);
@@ -2438,6 +2460,26 @@ changemedia(SDunit *u)
 }
 
 static int
+runsetudmamode(Drive *d, char *s)
+{
+	int i;
+	Aportc *pc;
+	Aportm *pm;
+
+	pc = &d->portc;
+	pm = &d->portm;
+
+	i = 1;
+	if(lockready(d) == 0){
+		pm->udma = atoi(s);
+		if(setudmamode(pc, pm->udma) == 0)
+			i = 0;
+	}
+	qunlock(pm);
+	return i;
+}
+
+static int
 iawctl(SDunit *u, Cmdbuf *cmd)
 {
 	char **f;
@@ -2497,7 +2539,10 @@ iawctl(SDunit *u, Cmdbuf *cmd)
 		runsmartable(d, 0);
 	else if(strcmp(f[0], "state") == 0)
 		forcestate(d, f[1]? f[1]: "null");
-	else{
+	else if(strcmp(f[0], "udmamode") == 0){
+		if(runsetudmamode(d, f[1]? f[1]: "0"))
+			cmderror(cmd, "bad udmamode / stuck port");
+	}else{
 		cmderror(cmd, Ebadctl);
 		return -1;
 	}

@@ -316,12 +316,22 @@ enum {
 	Datapi16= 1<<5,
 };
 
+enum{
+	Idmasp	= 1<<8,
+	Illba	= 1<<10,
+};
+
+typedef struct {
+	uchar	udma;	
+} Sfis;
+
 typedef struct {
 	QLock;
 	Rendez;
 	uchar	flag;
 	uchar	feat;
 	uchar	smart;
+	Sfis;
 	Afis	fis;
 	Alist	*list;
 	Actab	*ctab;
