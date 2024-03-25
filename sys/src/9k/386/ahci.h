@@ -314,6 +314,8 @@ enum {
 	Dnop	= 1<<3,
 	Datapi	= 1<<4,
 	Datapi16= 1<<5,
+	Dsct	= 1<<6,
+	Dnflag	= 7,
 };
 
 enum{

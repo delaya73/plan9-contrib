@@ -110,13 +110,14 @@ static char *descmode[] = {		/*  only printed */
 	"sata 3",
 };
 
-static char *flagname[] = {
+static char *flagname[Dnflag] = {
 	"llba",
 	"smart",
 	"power",
 	"nop",
 	"atapi",
 	"atapi16",
+	"sct",
 };
 
 typedef struct Htab Htab;
@@ -571,6 +572,9 @@ ahciidentify(Aportc *pc, ushort *id)
 		if(i & (1<<14))
 			pm->feat |= Dnop;
 	}
+
+	if(gbit16(id + 206) & 1)
+		pm->feat |= Dsct;
 	return s;
 }
 
@@ -2273,7 +2277,7 @@ pflag(char *s, char *e, uchar f)
 {
 	uchar i;
 
-	for(i = 0; i < 8; i++)
+	for(i = 0; i < Dnflag; i++)
 		if(f & (1 << i))
 			s = seprint(s, e, "%s ", flagname[i]);
 	return seprint(s, e, "\n");
