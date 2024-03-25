@@ -592,7 +592,7 @@ stop1:
 	dprint("ahci: clo clear %#lx\n", a->task);
 	if(a->task & ASbsy)
 		return -1;
-	*p |= Ast;
+	*p |= Afre|Ast;
 	return 0;
 }
 
@@ -1231,7 +1231,7 @@ maxmode(Ctlr *c)
 static void
 checkdrive(Drive *d, int i)
 {
-	ushort s;
+	ushort s, sig;
 	char *name;
 
 	if(d == nil) {
@@ -1293,14 +1293,17 @@ reset:
 			ilock(d);
 			break;
 		case Intactive|Devphycomm|Devpresent:
+			if(d->unit == nil)
+				break;
 			if((++d->wait&Midwait) == 0){
 				dprint("%s: slow reset %06#ux task=%#lux; %d\n",
 					name, s, d->port->task, d->wait);
 				goto reset;
 			}
 			s = (uchar)d->port->task;
-			if(s == 0x7f || ((d->port->sig >> 16) != 0xeb14 &&
-			    (s & ~0x17) != (1<<6)))
+			sig = d->port->sig >> 16;
+			if(s == 0x7f || s&ASbsy ||
+			    (sig != 0xeb14 && (s & ASdrdy) == 0))
 				break;
 			iunlock(d);
 			newdrive(d);
@@ -1419,7 +1422,7 @@ iainterrupt(Ureg*, void *a)
 		d = c->rawdrive + i;
 		ilock(d);
 		isdrivejabbering(d);
-		if(d->port->isr && c->hba->pi & mask)
+		if(d->port != nil && d->port->isr && c->hba->pi & mask)
 			updatedrive(d);
 		c->hba->isr = mask;
 		iunlock(d);
@@ -1496,7 +1499,8 @@ iaverify(SDunit *u)
 	d = c->drive[u->subno];
 	ilock(c);
 	ilock(d);
-	d->unit = u;
+	if(d->unit == nil)
+		d->unit = u;
 	iunlock(d);
 	iunlock(c);
 	checkdrive(d, d->driveno);		/* c->d0 + d->driveno */
@@ -1576,7 +1580,7 @@ iaonline(SDunit *unit)
 		d->mediachange = 0;
 		/* devsd resets this after online is called; why? */
 		unit->sectors = d->sectors;
-		unit->secsize = 512;		/* default size */
+		unit->secsize = d->secsize;
 	} else if(d->state == Dready)
 		r = 1;
 	iunlock(d);
