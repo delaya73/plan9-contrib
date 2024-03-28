@@ -324,14 +324,12 @@ static void
 listsetup(Aportc *pc, int flags)
 {
 	Alist *list;
-	uvlong pa;
 
 	list = pc->pm->list;
-	list->flags = flags | 0x5;
+	list->flags = flags | 5;
 	list->len = 0;
-	pa = PCIWADDR(pc->pm->ctab);
-	list->ctab = pa;
-	list->ctabhi = pa>>32;
+	list->ctab = PCIWADDR(pc->pm->ctab);
+	list->ctabhi = 0;
 }
 
 static int
@@ -519,17 +517,15 @@ ahciidentify0(Aportc *pc, void *id, int atapi)
 	uchar *c;
 	Aprdt *p;
 	static uchar tab[] = { 0xec, 0xa1, };
-	uvlong pa;
 
 	c = cfissetup(pc);
 	c[2] = tab[atapi];
 	listsetup(pc, 1<<16);
 
 	memset(id, 0, 0x100);			/* magic */
-	pa = PCIWADDR(id);
 	p = &pc->pm->ctab->prdt;
-	p->dba = pa;
-	p->dbahi = pa>>32;
+	p->dba = PCIWADDR(id);
+	p->dbahi = 0;
 	p->count = 1<<31 | (0x200-2) | 1;
 	return ahciwait(pc, 3*1000);
 }
@@ -758,7 +754,6 @@ ahciwakeup(Aportc *c, uint mode)
 static int
 ahciconfigdrive(Drive *d)
 {
-	uvlong pa;
 	Ahba *h;
 	Aport *p;
 	Aportm *pm;
@@ -778,12 +773,10 @@ ahciconfigdrive(Drive *d)
 		return -1;
 	}
 
-	pa = PCIWADDR(pm->list);
-	p->list = pa;
-	p->listhi = pa>>32;
-	pa = PCIWADDR(pm->fis.base);
-	p->fis = pa;
-	p->fishi = pa>>32;
+	p->list = PCIWADDR(pm->list);
+	p->listhi = 0;
+	p->fis = PCIWADDR(pm->fis.base);
+	p->fishi = 0;
 
 	p->cmd |= Afre;
 
@@ -791,7 +784,7 @@ ahciconfigdrive(Drive *d)
 		p->cmd |= Apwr;
 
 	if((h->cap & Hsss) != 0){
-		dprint("ahci: spin up ... [%.3lux]\n", p->sstatus);
+		dprint("ahci: spinning up ... [%#lux]\n", p->sstatus);
 		for(i = 0; i < 1400; i += 50){
 			if((p->sstatus & Devphyoffline) != 0)
 				break;
@@ -1632,7 +1625,6 @@ ahcibuild(Drive *d, uchar *cmd, void *data, int n, vlong lba)
 	Aportm *pm;
 	Aprdt *p;
 	static uchar tab[2][2] = { 0xc8, 0x25, 0xca, 0x35, };
-	uvlong pa;
 
 	pm = &d->portm;
 	dir = *cmd == ScmdExtwrite || *cmd == ScmdWrite16;
@@ -1671,14 +1663,12 @@ ahcibuild(Drive *d, uchar *cmd, void *data, int n, vlong lba)
 	if(dir == Write)
 		l->flags |= Lwrite;
 	l->len = 0;
-	pa = PCIWADDR(t);
-	l->ctab = pa;
-	l->ctabhi = pa>>32;
+	l->ctab = PCIWADDR(t);
+	l->ctabhi = 0;
 
-	pa = PCIWADDR(data);
 	p = &t->prdt;
-	p->dba = pa;
-	p->dbahi = pa>>32;
+	p->dba = PCIWADDR(data);
+	p->dbahi = 0;
 	if(d->unit == nil)
 		panic("ahcibuild: nil d->unit");
 	p->count = 1<<31 | (d->unit->secsize*n - 2) | 1;
@@ -1694,7 +1684,6 @@ ahcibuildpkt(Aportm *pm, SDreq *r, void *data, int n)
 	Alist *l;
 	Actab *t;
 	Aprdt *p;
-	uvlong pa;
 
 	qlock(pm);
 	l = pm->list;
@@ -1728,17 +1717,15 @@ ahcibuildpkt(Aportm *pm, SDreq *r, void *data, int n)
 	if(r->write != 0 && data)
 		l->flags |= Lwrite;
 	l->len = 0;
-	pa = PCIWADDR(t);
-	l->ctab = pa;
-	l->ctabhi = pa>>32;
+	l->ctab = PCIWADDR(t);
+	l->ctabhi = 0;
 
 	if(data == 0)
 		return l;
 
-	pa = PCIWADDR(data);
 	p = &t->prdt;
-	p->dba = pa;
-	p->dbahi = pa>>32;
+	p->dba = PCIWADDR(data);
+	p->dbahi = 0;
 	p->count = 1<<31 | (n - 2) | 1;
 
 	return l;
