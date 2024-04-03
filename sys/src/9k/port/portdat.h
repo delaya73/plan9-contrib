@@ -360,6 +360,8 @@ enum
 	SG_STACK	= 03,
 	SG_SHARED	= 04,
 	SG_PHYSICAL	= 05,
+	SG_FIXED	= 06,
+	SG_STICKY	= 07,
 
 	SG_CACHED	= 0020,		/* Physseg can be cached */
 	SG_RONLY	= 0040,		/* Segment is read only */

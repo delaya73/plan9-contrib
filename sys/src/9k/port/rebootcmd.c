@@ -88,9 +88,7 @@ setbootcmd(int argc, char *argv[])
 	char *buf, *p, *ep;
 	int i;
 
-	buf = malloc(1024);
-	if(buf == nil)
-		error(Enomem);
+	buf = smalloc(1024);
 	p = buf;
 	ep = buf + 1024;
 	for(i=0; i<argc; i++)

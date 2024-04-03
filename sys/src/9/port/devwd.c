@@ -162,7 +162,7 @@ wdread(Chan* c, void* a, long n, vlong off)
 		if(wd == nil || wd->stat == nil)
 			return 0;
 
-		p = malloc(READSTR);
+		p = smalloc(READSTR);
 		if(p == nil)
 			error(Enomem);
 		if(waserror()){

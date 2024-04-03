@@ -285,7 +285,7 @@ sdgetunit(SDev* sdev, int subno)
 			qunlock(&sdev->unitlock);
 			return nil;
 		}
-		if((unit = malloc(sizeof(SDunit))) == nil){
+		if((unit = smalloc(sizeof(SDunit))) == nil){
 			qunlock(&sdev->unitlock);
 			return nil;
 		}
@@ -900,6 +900,7 @@ sdsetsense(SDreq *r, int status, int key, int asc, int ascq)
 	SDunit *unit;
 
 	unit = r->unit;
+	unit->sense[0] = 0x80 | 0x70;	/* valid; fixed-format */
 	unit->sense[2] = key;
 	unit->sense[12] = asc;
 	unit->sense[13] = ascq;
@@ -1031,13 +1032,17 @@ sdfakescsi(SDreq *r, void *info, int ilen)
 		/*
 		 * Read capacity returns the LBA of the last sector.
 		 */
-		len = unit->sectors - 1;
+		len = unit->sectors;
+		if(len >= 0xffffffff)
+			len = 0xffffffff;
+		else if(len > 0)
+			len--;
 		p = r->data;
 		*p++ = len>>24;
 		*p++ = len>>16;
 		*p++ = len>>8;
 		*p++ = len;
-		len = 512;
+		len = unit->secsize;
 		*p++ = len>>24;
 		*p++ = len>>16;
 		*p++ = len>>8;
@@ -1053,7 +1058,9 @@ sdfakescsi(SDreq *r, void *info, int ilen)
 		/*
 		 * Read capcity returns the LBA of the last sector.
 		 */
-		len = unit->sectors - 1;
+		len = unit->sectors;
+		if(len > 0)
+			len--;
 		p = r->data;
 		*p++ = len>>56;
 		*p++ = len>>48;
@@ -1063,7 +1070,7 @@ sdfakescsi(SDreq *r, void *info, int ilen)
 		*p++ = len>>16;
 		*p++ = len>>8;
 		*p++ = len;
-		len = 512;
+		len = unit->secsize;
 		*p++ = len>>24;
 		*p++ = len>>16;
 		*p++ = len>>8;
@@ -1150,7 +1157,7 @@ sdread(Chan *c, void *a, long n, vlong off)
 		error(Eperm);
 	case Qtopctl:
 		m = 64*1024;	/* room for register dumps */
-		p = buf = malloc(m);
+		p = buf = smalloc(m);
 		if(p == nil)
 			error(Enomem);
 		e = p + m;
@@ -1176,7 +1183,7 @@ sdread(Chan *c, void *a, long n, vlong off)
 
 		unit = sdev->unit[UNIT(c->qid)];
 		m = 16*1024;	/* room for register dumps */
-		p = malloc(m);
+		p = smalloc(m);
 		if(p == nil)
 			error(Enomem);
 		l = snprint(p, m, "inquiry %.48s\n",
@@ -1381,7 +1388,7 @@ sdwrite(Chan* c, void* a, long n, vlong off)
 		case Rawcmd:
 			if(n < 6 || n > sizeof(req->cmd))
 				error(Ebadarg);
-			if((req = malloc(sizeof(SDreq))) == nil)
+			if((req = smalloc(sizeof(SDreq))) == nil)
 				error(Enomem);
 			req->unit = unit;
 			memmove(req->cmd, a, n);

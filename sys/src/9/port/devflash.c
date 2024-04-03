@@ -242,9 +242,7 @@ flashread(Chan *c, void *buf, long n, vlong offset)
 			error(Eio);
 		return n;
 	case Qctl:
-		s = malloc(READSTR);
-		if(s == nil)
-			error(Enomem);
+		s = smalloc(READSTR);
 		if(waserror()){
 			free(s);
 			nexterror();

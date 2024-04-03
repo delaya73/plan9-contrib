@@ -19,7 +19,9 @@ newseg(int type, uintptr base, uintptr top)
 	if(size > (SEGMAPSIZE*PTEPERTAB))
 		error(Enovmem);
 
-	s = smalloc(sizeof(Segment));
+	s = malloc(sizeof(Segment));
+	if(s == nil)
+		error(Enomem);
 	s->ref = 1;
 	s->type = type;
 	s->base = base;
@@ -30,12 +32,19 @@ newseg(int type, uintptr base, uintptr top)
 	s->sema.prev = &s->sema;
 	s->sema.next = &s->sema;
 
+	if((type & SG_TYPE) == SG_PHYSICAL){
+		s->map = nil;
+		s->mapsize = 0;
+		return s;
+	}
+
 	mapsize = HOWMANY(size, PTEPERTAB);
 	if(mapsize > nelem(s->ssegmap)){
-		mapsize *= 2;
-		if(mapsize > SEGMAPSIZE)
-			mapsize = SEGMAPSIZE;
-		s->map = smalloc(mapsize*sizeof(Pte*));
+		s->map = malloc(mapsize*sizeof(Pte*));
+		if(s->map == nil){
+			free(s);
+			error(Enomem);
+		}
 		s->mapsize = mapsize;
 	}
 	else{
@@ -127,6 +136,8 @@ dupseg(Segment **seg, int segno, int share)
 	case SG_TEXT:		/* New segment shares pte set */
 	case SG_SHARED:
 	case SG_PHYSICAL:
+	case SG_FIXED:
+	case SG_STICKY:
 		goto sameseg;
 
 	case SG_STACK:
@@ -141,9 +152,10 @@ dupseg(Segment **seg, int segno, int share)
 
 	case SG_DATA:		/* Copy on write plus demand load info */
 		if(segno == TSEG){
+			n = data2txt(s);
 			poperror();
 			qunlock(&s->lk);
-			return data2txt(s);
+			return n;
 		}
 
 		if(share)

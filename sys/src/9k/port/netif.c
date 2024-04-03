@@ -215,9 +215,7 @@ netifread(Netif *nif, Chan *c, void *a, long n, vlong off)
 	case Nctlqid:
 		return readnum(offset, a, n, NETID(c->qid.path), NUMSIZE);
 	case Nstatqid:
-		p = malloc(READSTR);
-		if(p == nil)
-			error(Enomem);
+		p = smalloc(READSTR);
 		j = snprint(p, READSTR, "in: %llud\n", nif->inpackets);
 		j += snprint(p+j, READSTR-j, "link: %d\n", nif->link);
 		j += snprint(p+j, READSTR-j, "out: %llud\n", nif->outpackets);
@@ -237,9 +235,7 @@ netifread(Netif *nif, Chan *c, void *a, long n, vlong off)
 		free(p);
 		return n;
 	case Naddrqid:
-		p = malloc(READSTR);
-		if(p == nil)
-			error(Enomem);
+		p = smalloc(READSTR);
 		j = 0;
 		for(i = 0; i < nif->alen; i++)
 			j += snprint(p+j, READSTR-j, "%2.2ux", nif->addr[i]);
