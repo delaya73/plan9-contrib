@@ -534,7 +534,7 @@ traceread(Chan *c, void *a, long n, vlong offset)
 	case Qctl:
 		i = 0;
 		qlock(&traceslock);
-		buf = malloc(READSTR);
+		buf = smalloc(READSTR);
 		i += snprint(buf + i, READSTR - i, "logsize %lud\n", logsize);
 		for(p = traces; p != nil; p = p->next)
 			i += snprint(buf + i, READSTR - i, "trace %p %p new %s\n",
@@ -676,7 +676,7 @@ tracewrite(Chan *c, void *a, long n, vlong)
 	default:
 		error("tracewrite: bad qid");
 	case Qctl:
-		s = malloc(n + 1);
+		s = smalloc(n + 1);
 		memmove(s, a, n);
 		s[n] = 0;
 		ntok = tokenize(s, tok, nelem(tok));

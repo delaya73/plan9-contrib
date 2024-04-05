@@ -154,9 +154,7 @@ vgaread(Chan* c, void* a, long n, vlong off)
 	case Qvgactl:
 		scr = &vgascreen[0];
 
-		p = malloc(READSTR);
-		if(p == nil)
-			error(Enomem);
+		p = smalloc(READSTR);
 		if(waserror()){
 			free(p);
 			nexterror();

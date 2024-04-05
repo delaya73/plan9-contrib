@@ -435,9 +435,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	memmove(dump, ctlr->dump, sizeof(dump));
 	unlock(&ctlr->dlock);
 
-	if((alloc = malloc(READSTR)) == nil)
-		error(Enomem);
-	p = alloc;
+	p = alloc = smalloc(READSTR);
 	e = p + READSTR;
 
 	p = seprint(p, e, "transmit good frames: %lud\n", dump[0]);

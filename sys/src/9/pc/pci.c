@@ -105,8 +105,7 @@ tbdffmt(Fmt* fmt)
 	int l, r;
 	uint type, tbdf;
 
-	if((p = malloc(READSTR)) == nil)
-		return fmtstrcpy(fmt, "(tbdfconv)");
+	p = smalloc(READSTR);
 
 	switch(fmt->r){
 	case 'T':

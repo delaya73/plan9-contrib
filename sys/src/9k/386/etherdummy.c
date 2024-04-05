@@ -71,9 +71,7 @@ ifstat(Ether *e, void *a, long n, ulong offset)
 	Ctlr *c;
 
 	c = e->ctlr;
-	p = s = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = s = smalloc(READSTR);
 	q = p + READSTR;
 
 	p = seprint(p, q, "mtu: min:%d max:%d\n", e->minmtu, e->maxmtu);

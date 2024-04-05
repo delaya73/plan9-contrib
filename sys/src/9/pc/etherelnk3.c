@@ -1180,9 +1180,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 	statistics(ether);
 	iunlock(&ctlr->wlock);
 
-	p = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = smalloc(READSTR);
 	len = snprint(p, READSTR, "interrupts: %lud\n", ctlr->interrupts);
 	len += snprint(p+len, READSTR-len, "bogusinterrupts: %lud\n", ctlr->bogusinterrupts);
 	len += snprint(p+len, READSTR-len, "timer: %lud %lud\n",

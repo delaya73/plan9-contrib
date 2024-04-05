@@ -66,11 +66,7 @@ devtabread(Chan*, void* buf, long n, vlong off)
 	Dev *dev;
 	char *alloc, *e, *p;
 
-	alloc = malloc(READSTR);
-	if(alloc == nil)
-		error(Enomem);
-
-	p = alloc;
+	p = alloc = smalloc(READSTR);
 	e = p + READSTR;
 	for(i = 0; devtab[i] != nil; i++){
 		dev = devtab[i];

@@ -386,8 +386,7 @@ rtl8169mii(Ctlr* ctlr)
 	/*
 	 * Link management.
 	 */
-	if((ctlr->mii = malloc(sizeof(Mii))) == nil)
-		return -1;
+	ctlr->mii = smalloc(sizeof(Mii));
 	ctlr->mii->mir = rtl8169miimir;
 	ctlr->mii->miw = rtl8169miimiw;
 	ctlr->mii->ctlr = ctlr;
@@ -538,8 +537,7 @@ rtl8169ifstat(Ether* edev, void* a, long n, ulong offset)
 		return 0;
 	}
 
-	if((p = malloc(READSTR)) == nil)
-		error(Enomem);
+	p = smalloc(READSTR);
 	e = p + READSTR;
 
 	l = snprint(p, READSTR, "TxOk: %llud\n", dtcc->txok);

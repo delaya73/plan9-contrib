@@ -537,8 +537,7 @@ rtl8169ifstat(Ether* edev, void* a, long n, ulong offset)
 		return 0;
 	}
 
-	if((alloc = malloc(READSTR)) == nil)
-		error(Enomem);
+	alloc = smalloc(READSTR);
 	e = alloc+READSTR;
 
 	p = seprint(alloc, e, "TxOk: %llud\n", dtcc->txok);

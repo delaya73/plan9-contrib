@@ -1466,6 +1466,7 @@ procctl(Proc *p)
 	switch(p->procctl) {
 	case Proc_exitbig:
 		spllo();
+		pprint("Killed: Insufficient physical memory\n");
 		pexit("Killed: Insufficient physical memory", 1);
 
 	case Proc_exitme:

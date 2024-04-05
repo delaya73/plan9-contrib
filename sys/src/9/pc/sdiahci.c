@@ -2240,7 +2240,7 @@ iapnp(void)
 		memset(s, 0, sizeof *s);
 		c->physio = (uchar *)io;
 		c->mmio = vmap(io, p->mem[Abar].size);
-		if(c->mmio == nil){
+		if(c->mmio == 0){
 			print("ahci: %s: address %#luX in use did=%#x\n",
 				Tname(c), io, p->did);
 			continue;

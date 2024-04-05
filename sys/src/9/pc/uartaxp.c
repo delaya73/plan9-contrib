@@ -260,9 +260,7 @@ axpstatus(Uart* uart, void* buf, long n, long offset)
 	Ccb *ccb;
 	u16int bs, fstat, ms;
 
-	p = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = smalloc(READSTR);
 	ccb = ((Cc*)(uart->regs))->ccb;
 	bs = ccb->bs;
 	fstat = ccb->df;

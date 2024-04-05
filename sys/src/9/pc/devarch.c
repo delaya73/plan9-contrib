@@ -406,9 +406,7 @@ archread(Chan *c, void *a, long n, vlong offset)
 		break;
 	}
 
-	if((buf = malloc(n)) == nil)
-		error(Enomem);
-	p = buf;
+	p = buf = smalloc(n);
 	n = n/Linelen;
 	offset = offset/Linelen;
 
@@ -1032,9 +1030,7 @@ archctlread(Chan*, void *a, long nn, vlong offset)
 	int n;
 	char *buf, *p, *ep;
 
-	p = buf = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = buf = smalloc(READSTR);
 	ep = p + READSTR;
 	p = seprint(p, ep, "cpu %s %lud%s\n",
 		cputype->name, (ulong)(m->cpuhz+999999)/1000000,

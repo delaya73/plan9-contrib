@@ -161,9 +161,7 @@ i8250status(Uart* uart, void* buf, long n, long offset)
 	Ctlr *ctlr;
 	uchar ier, lcr, mcr, msr;
 
-	p = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = smalloc(READSTR);
 	ctlr = uart->regs;
 	mcr = ctlr->sticky[Mcr];
 	msr = csr8r(ctlr, Msr);

@@ -343,9 +343,7 @@ ga620ifstat(Ether* edev, void* a, long n, ulong offset)
 
 	if(n == 0)
 		return 0;
-	p = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = smalloc(READSTR);
 	l = 0;
 	for(i = 0; i < 256; i++){
 		if((r = ctlr->gib->statistics[i]) == 0)

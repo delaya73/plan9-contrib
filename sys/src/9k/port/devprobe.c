@@ -215,7 +215,7 @@ proberead(Chan *c, void *a, long n, vlong offset)
 	default:
 		error("proberead: bad qid");
 	case Qctl:
-		buf = malloc(READSTR);
+		buf = smalloc(READSTR);
 		i = 0;
 		qlock(&probeslk);
 		i += snprint(buf + i, READSTR - i, "logsize %lud\n", logsize);
@@ -296,7 +296,7 @@ probewrite(Chan *c, void *a, long n, vlong)
 	default:
 		error("proberead: bad qid");
 	case Qctl:
-		s = malloc(n + 1);
+		s = smalloc(n + 1);
 		memmove(s, a, n);
 		s[n] = 0;
 		ntok = tokenize(s, tok, nelem(tok));

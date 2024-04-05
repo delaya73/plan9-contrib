@@ -609,11 +609,7 @@ igbeifstat(Ether* edev, void* a, long n, ulong offset)
 
 	ctlr = edev->ctlr;
 	qlock(&ctlr->slock);
-	p = malloc(READSTR);
-	if(p == nil) {
-		qunlock(&ctlr->slock);
-		error(Enomem);
-	}
+	p = smalloc(READSTR);
 	l = 0;
 	for(i = 0; i < Nstatistics; i++){
 		r = csr32r(ctlr, Statistics+i*4);

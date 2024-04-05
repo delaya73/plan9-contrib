@@ -670,11 +670,7 @@ i82563ifstat(Ether* edev, void* a, long n, ulong offset)
 
 	ctlr = edev->ctlr;
 	qlock(&ctlr->slock);
-	p = s = malloc(READSTR);
-	if(p == nil) {
-		qunlock(&ctlr->slock);
-		error(Enomem);
-	}
+	p = s = smalloc(READSTR);
 	e = p + READSTR;
 
 	for(i = 0; i < Nstatistics; i++){

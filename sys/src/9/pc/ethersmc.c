@@ -642,9 +642,7 @@ ifstat(Ether* ether, void* a, long n, ulong offset)
 		return 0;
 
 	ctlr = ether->ctlr;
-	p = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = smalloc(READSTR);
 
 	s = 0;
 	if (ctlr->rev > 0) {

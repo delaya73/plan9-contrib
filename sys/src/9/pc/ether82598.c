@@ -386,9 +386,7 @@ ifstat(Ether *edev, void *a, long n, ulong offset)
 	Ctlr *ctlr;
 
 	ctlr = edev->ctlr;
-	p = s = malloc(READSTR);
-	if(p == nil)
-		error(Enomem);
+	p = s = smalloc(READSTR);
 	e = p + READSTR;
 
 	readstats(ctlr);

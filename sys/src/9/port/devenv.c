@@ -419,9 +419,7 @@ getconfenv(void)
 		e = eg->ent[i];
 		n += strlen(e->name) + e->len + 2;
 	}
-	p = malloc(n + 1);
-	if(p == nil)
-		error(Enomem);
+	p = smalloc(n + 1);
 	q = p;
 	for(i=0; i<eg->nent; i++){
 		e = eg->ent[i];

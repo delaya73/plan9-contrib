@@ -311,9 +311,7 @@ rtl8139ifstat(Ether* edev, void* a, long n, ulong offset)
 	Ctlr *ctlr;
 	char *alloc, *e, *p;
 
-	if((alloc = malloc(READSTR)) == nil)
-		error(Enomem);
-
+	alloc = smalloc(READSTR);
 	ctlr = edev->ctlr;
 	e = alloc + READSTR;
 	p = seprint(alloc, e, "rcr %#8.8ux\n", ctlr->rcr);

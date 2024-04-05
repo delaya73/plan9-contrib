@@ -506,11 +506,7 @@ gc82543ifstat(Ether* edev, void* a, long n, ulong offset)
 
 	ctlr = edev->ctlr;
 	lock(&ctlr->slock);
-	p = malloc(READSTR);
-	if(p == nil) {
-		unlock(&ctlr->slock);
-		error(Enomem);
-	}
+	p = smalloc(READSTR);
 	l = 0;
 	for(i = 0; i < Nstatistics; i++){
 		r = csr32r(ctlr, Statistics+i*4);
