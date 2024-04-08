@@ -131,6 +131,9 @@ putseg(Segment *s)
 	if(i)
 		putimage(i);
 
+	assert(s->sema.prev == &s->sema);
+	assert(s->sema.next == &s->sema);
+
 	emap = &s->map[s->mapsize];
 	for(pp = s->map; pp < emap; pp++)
 		if(*pp)
