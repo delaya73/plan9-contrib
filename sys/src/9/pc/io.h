@@ -283,9 +283,16 @@ enum {
 	/* vendor ids */
 	Vatiamd	= 0x1002,
 	Vintel	= 0x8086,
-	Vjmicron= 0x197b,
-	Vmarvell= 0x1b4b,
+	Vjmicron	= 0x197b,
+	Vmarvell	= 0x1b4b,
 	Vmyricom= 0x14c1,
+	Vnvidia	= 0x10de,
+	Vvia	= 0x1106,
+	Vamd	= 0x1022,
+	Vsis	= 0x1039,
+	Vasmedia	= 0x1b21,
+	Vmmarvell	= 0x11ab,	 /* 0x11ab means Marvell */
+	Vuli	= 0x10b9,
 };
 
 #define PCIWINDOW	0

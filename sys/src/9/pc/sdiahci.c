@@ -57,14 +57,16 @@ enum {
 	Tesb,
 	Tich,
 	Tsb600,
-	Tunk,
+	Tjmicron,
+	Tahci,
 };
 
 static char *tname[] = {
 	"63xxesb",
 	"ich",
 	"sb600",
-	"unknown",
+	"jmicron",
+	"ahci",
 };
 
 enum {
@@ -999,6 +1001,8 @@ updatedrive(Drive *d)
 	f = 0;
 	p = d->port;
 	cause = p->isr;
+	if(d->ctlr->type == Tjmicron)
+		cause &= ~Aifs;
 	serr = p->serror;
 	p->isr = cause;
 	name = dnam(d);
@@ -1951,6 +1955,11 @@ iario(SDreq *r)
 	if(r->dlen < count * unit->secsize)
 		count = r->dlen / unit->secsize;
 	max = 128;
+	if(d->portm.feat & Dllba){
+		max = 8192;		/* ahci maximum */
+		if(c->type == Tsb600)
+			max = 255;	/* errata */
+	}
 
 	try = 0;
 retry:
@@ -2050,6 +2059,18 @@ iasetupahci(Ctlr *c)
 	pcicfgw16(c->pci, 0x92, pcicfgr16(c->pci, 0x92) | 0xf);
 }
 
+static void
+sbsetupahci(Pcidev *p)
+{
+	print("sbsetupahci: tweaking %.4ux ccru %.2ux ccrp %.2ux\n",
+		p->did, p->ccru, p->ccrp);
+	pcicfgw8(p, 0x40, pcicfgr8(p, 0x40) | 1);
+	pcicfgw8(p, PciCCRu, Pciscsata);
+	pcicfgw8(p, PciCCRp, 1);
+	p->ccru = Pciscsata;
+	p->ccrp = 1;
+}
+
 static int
 esbenc(Ctlr *c)
 {
@@ -2104,7 +2125,12 @@ ahciencinit(Ctlr *c)
 static int
 didtype(Pcidev *p)
 {
+	int type;
+
+	type = Tahci;
 	switch(p->vid){
+	default:
+		return -1;
 	case Vintel:
 		if((p->did & 0xfffc) == 0x2680)
 			return Tesb;
@@ -2112,34 +2138,55 @@ didtype(Pcidev *p)
 		 * 0x27c4 is the intel 82801 in compatibility (not sata) mode.
 		 */
 		if (p->did == 0x1e02 ||			/* c210 */
+		    p->did == 0x8c02 ||			/* c220 */
 		    p->did == 0x24d1 ||			/* 82801eb/er */
 		    p->did == 0x2653 ||			/* 82801fbm */
 		    (p->did & 0xfffb) == 0x27c1 ||	/* 82801g[bh]m ich7 */
 		    p->did == 0x2821 ||			/* 82801h[roh] */
+		    p->did == 0x2822 ||			/* 82801 SATA RAID */
 		    (p->did & 0xfffe) == 0x2824 ||	/* 82801h[b] */
 		    (p->did & 0xfeff) == 0x2829 ||	/* ich8/9m */
 		    (p->did & 0xfffe) == 0x2922 ||	/* ich9 */
 		    p->did == 0x3a02 ||			/* 82801jd/do */
 		    (p->did & 0xfefe) == 0x3a22 ||	/* ich10, pch */
-		    (p->did & 0xfff8) == 0x3b28)	/* pchm */
+		    (p->did & 0xfff7) == 0x3b28 ||	/* pchm */
+		    (p->did & 0xfffe) == 0x3b22)	/* pch */
 			return Tich;
 		break;
 	case Vatiamd:
-		if(p->did == 0x4380 || p->did == 0x4390 || p->did == 0x4391 || p->did == 0x4394){
-			print("detected sb600 vid %#ux did %#ux\n", p->vid, p->did);
-			return Tsb600;
+		if(p->ccru == 1 || p->ccrp != 1)
+			if(p->did == 0x4380 || p->did == 0x4390 || p->did == 0x4391 || p->did == 0x4394)
+				sbsetupahci(p);
+		type = Tsb600;
+		break;
+	case Vvia:
+		/*
+		 * unconfirmed report that the programming
+		 * interface is set incorrectly.
+		 */
+		if(p->did == 0x3349)
+			return Tahci;
+		break;
+	case Vamd:
+		/* Hudson SATA Controller [AHCI mode] */
+		if((p->did & 0xfffe) == 0x7800){
+			sbsetupahci(p);
+			return Tahci;
 		}
 		break;
+	case Vnvidia:
+	case Vsis:
+	case Vasmedia:
 	case Vmarvell:
-		if (p->did == 0x9123)
-			print("ahci: marvell sata 3 controller has delusions "
-				"of something on unit 7\n");
+	case Vmmarvell:
+		break;
+	case Vjmicron:
+	case Vuli:
+		type = Tjmicron;
 		break;
 	}
-	if(p->ccrb == Pcibcstore && p->ccru == Pciscsata && p->ccrp == 1){
-		print("ahci: Tunk: vid %#4.4ux did %#4.4ux\n", p->vid, p->did);
-		return Tunk;
-	}
+	if(p->ccrb == Pcibcstore && p->ccru == Pciscsata && p->ccrp == 1)
+		return type;
 	return -1;
 }
 
