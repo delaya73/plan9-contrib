@@ -8,8 +8,8 @@
 
 uvlong maxlockcycles;
 uvlong maxilockcycles;
-ulong maxlockpc;
-ulong maxilockpc;
+uintptr maxlockpc;
+uintptr maxilockpc;
 
 struct
 {
@@ -54,7 +54,7 @@ lock(Lock *l)
 
 	lockstats.locks++;
 	if(up)
-		ainc(&up->nlocks);	/* prevent being scheded */
+		up->nlocks++;	/* prevent being scheded */
 	if(TAS(&l->key) == 0){
 		if(up)
 			up->lastlock = l;
@@ -68,7 +68,7 @@ lock(Lock *l)
 		return 0;
 	}
 	if(up)
-		adec(&up->nlocks);
+		up->nlocks--;
 
 	lockstats.glare++;
 	for(;;){
@@ -90,7 +90,7 @@ lock(Lock *l)
 			}
 		}
 		if(up)
-			ainc(&up->nlocks);
+			up->nlocks++;
 		if(TAS(&l->key) == 0){
 			if(up)
 				up->lastlock = l;
@@ -104,7 +104,7 @@ lock(Lock *l)
 			return 1;
 		}
 		if(up)
-			adec(&up->nlocks);
+			up->nlocks--;
 	}
 }
 
@@ -143,8 +143,8 @@ acquire:
 	l->sr = s;
 	l->pc = pc;
 	l->p = up;
-	l->isilock = 1;
 	l->m = m;
+	l->isilock = 1;
 #ifdef LOCKCYCLES
 	cycles(&l->lockcycles);
 #endif
@@ -154,10 +154,10 @@ int
 canlock(Lock *l)
 {
 	if(up)
-		ainc(&up->nlocks);
+		up->nlocks++;
 	if(TAS(&l->key)){
 		if(up)
-			adec(&up->nlocks);
+			up->nlocks--;
 		return 0;
 	}
 
@@ -196,7 +196,7 @@ unlock(Lock *l)
 	l->key = 0;
 	coherence();
 
-	if(up && adec(&up->nlocks) == 0 && up->delaysched && islo()){
+	if(up && --up->nlocks == 0 && up->delaysched && islo()){
 		/*
 		 * Call sched if the need arose while locks were held
 		 * But, don't do it from interrupt routines, hence the islo() test

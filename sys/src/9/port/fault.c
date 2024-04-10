@@ -13,8 +13,8 @@ fault(ulong addr, int read)
 
 	if(up == nil)
 		panic("fault: nil up");
-	if(up->nlocks.ref)
-		print("fault: addr %#p: nlocks %ld\n", addr, up->nlocks.ref);
+	if(up->nlocks)
+		print("fault: addr %#p: nlocks %d\n", addr, up->nlocks);
 
 	sps = up->psstate;
 	up->psstate = "Fault";
