@@ -121,7 +121,7 @@ struct RWlock
 	Lock	use;
 	Proc	*head;		/* list of waiting processes */
 	Proc	*tail;
-	ulong	wpc;		/* pc of writer */
+	uintptr	wpc;		/* pc of writer */
 	Proc	*wproc;		/* writing proc */
 	int	readers;	/* number of readers */
 	int	writer;		/* number of writers */
@@ -778,7 +778,7 @@ struct Proc
 	Edf	*edf;		/* if non-null, real-time proc, edf contains scheduling params */
 	int	trace;		/* process being traced? */
 
-	ulong	qpc;		/* pc calling last blocking qlock */
+	uintptr	qpc;		/* pc calling last blocking qlock */
 
 	int	setargs;
 
