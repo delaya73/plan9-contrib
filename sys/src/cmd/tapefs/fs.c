@@ -1,6 +1,5 @@
 #include <u.h>
 #include <libc.h>
-#include <authsrv.h>
 #include <fcall.h>
 #include "tapefs.h"
 
@@ -75,7 +74,6 @@ main(int argc, char *argv[])
 	Ram *r;
 	char *defmnt;
 	int p[2];
-	char buf[TICKREQLEN];
 
 	fmtinstall('F', fcallfmt);
 
@@ -142,10 +140,8 @@ main(int argc, char *argv[])
 		break;
 	default:
 		close(p[0]);	/* don't deadlock if child fails */
-		if(mount(p[1], -1, defmnt, MREPL|MCREATE, "") < 0) {
-			sprint(buf, "mount on `%s' failed", defmnt);
-			error(buf);
-		}
+		if(mount(p[1], -1, defmnt, MREPL|MCREATE, "") == -1)
+			error("mount failed");
 	}
 	exits(0);
 }
@@ -164,9 +160,9 @@ rversion(Fid *unused)
 	else
 		messagesize = rhdr.msize;
 	thdr.msize = messagesize;
-	if(strncmp(rhdr.version, "9P2000", 6) != 0)
-		return "unrecognized 9P version";
 	thdr.version = "9P2000";
+	if(strncmp(rhdr.version, "9P", 2) != 0)
+		thdr.version = "unknown";
 
 	for(f = fids; f; f = f->next)
 		if(f->busy)
@@ -263,7 +259,7 @@ rwalk(Fid *f)
 			if(!dir->replete)
 				popdir(dir);
 			for(r=dir->child; r; r=r->next)
-				if(r->busy && strcmp(name, r->name)==0)
+				if(r->busy && cistrcmp(name, r->name)==0)
 					goto Accept;
 			break;	/* file not found */
 		}
@@ -495,35 +491,15 @@ void
 io(void)
 {
 	char *err;
-	int n, nerr;
-	char buf[ERRMAX];
+	int n;
 
-	errstr(buf, sizeof buf);
-	for(nerr=0, buf[0]='\0'; nerr<100; nerr++){
-		/*
-		 * reading from a pipe or a network device
-		 * will give an error after a few eof reads
-		 * however, we cannot tell the difference
-		 * between a zero-length read and an interrupt
-		 * on the processes writing to us,
-		 * so we wait for the error
-		 */
-		n = read9pmsg(mfd[0], mdata, sizeof mdata);
-		if(n==0)
-			continue;
-		if(n < 0){
-			if(buf[0]=='\0')
-				errstr(buf, sizeof buf);
-			continue;
-		}
-		nerr = 0;
-		buf[0] = '\0';
+	while((n = read9pmsg(mfd[0], mdata, sizeof mdata)) != 0){
+		if(n < 0)
+			error("mount read");
 		if(convM2S(mdata, n, &rhdr) != n)
 			error("convert error in convM2S");
-
 		if(verbose)
 			fprint(2, "tapefs: <=%F\n", &rhdr);/**/
-
 		thdr.data = (char*)mdata + IOHDRSZ;
 		thdr.stat = mdata + IOHDRSZ;
 		if(!fcalls[rhdr.type])
@@ -546,10 +522,6 @@ io(void)
 		if(write(mfd[1], mdata, n) != n)
 			error("mount write");
 	}
-	if(buf[0]=='\0' || strstr(buf, "hungup"))
-		exits("");
-	fprint(2, "%s: mount read: %s\n", argv0, buf);
-	exits(buf);
 }
 
 int

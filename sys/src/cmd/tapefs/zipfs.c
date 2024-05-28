@@ -189,10 +189,14 @@ findCDir(Biobuf *bin)
 	ecoff = Bseek(bin, -ZECHeadSize, 2);
 	if(ecoff < 0)
 		sysfatal("can't seek to header");
-
-	if(get4(bin) != ZECHeader)
-		sysfatal("bad magic number on directory");
-
+	off = 0;
+	while(get4(bin) != ZECHeader){
+		if(ecoff <= 0 || off >= 1024)
+			sysfatal("bad magic number");
+		off++;
+		ecoff--;
+		Bseek(bin, ecoff, 0);
+	}
 	get2(bin);
 	get2(bin);
 	get2(bin);
@@ -300,6 +304,8 @@ trailer(Biobuf *bin, ZipHead *zh)
 {
 	if(zh->flags & ZTrailInfo){
 		zh->crc = get4(bin);
+		if(zh->crc == 0x08074b50)	/* thanks apple */
+			zh->crc = get4(bin);
 		zh->csize = get4(bin);
 		zh->uncsize = get4(bin);
 	}
@@ -370,6 +376,7 @@ msdos2time(int time, int date)
 {
 	Tm tm;
 
+	memset(&tm, 0, sizeof(tm));
 	tm.hour = time >> 11;
 	tm.min = (time >> 5) & 63;
 	tm.sec = (time & 31) << 1;
