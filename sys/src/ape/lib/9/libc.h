@@ -152,9 +152,14 @@ int  enc32(char *, int, uchar *, int);
 int  dec64(uchar *, int, char *, int);
 int  enc64(char *, int, uchar *, int);
 
+extern	int	idn2utf(char *, char *, int);
+extern	int	utf2idn(char *, char *, int);
+
 extern	vlong	nsec(void);
 
 extern void sysfatal(char*, ...);
 
 extern	ulong	truerand(void);			/* uses /dev/random */
 extern	int	getfields(char*, char**, int, int, char*);
+
+extern	int	cistrncmp(char*, char*, int);

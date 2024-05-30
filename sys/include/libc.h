@@ -547,6 +547,9 @@ struct NetConnInfo
 extern	NetConnInfo*	getnetconninfo(char*, int);
 extern	void		freenetconninfo(NetConnInfo*);
 
+extern	int	idn2utf(char*, char*, int);
+extern	int	utf2idn(char*, char*, int);
+
 /*
  * system calls
  *
