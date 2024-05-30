@@ -130,6 +130,7 @@ long	ioread(Ioproc*, int, void*, long);
 long	ioreadn(Ioproc*, int, void*, long);
 long	iowrite(Ioproc*, int, void*, long);
 int	iosleep(Ioproc*, long);
+int	ioflush(Ioproc*);
 
 long	iocall(Ioproc*, long (*)(va_list*), ...);
 void	ioret(Ioproc*, int);

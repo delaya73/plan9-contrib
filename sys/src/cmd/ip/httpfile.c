@@ -304,7 +304,7 @@ httpfilereadproc(void*)
 {
 	Block *b;
 
-	threadsetname("httpfilereadproc");
+	threadsetname("httpfilereadproc %s", url);
 
 	for(;;){
 		b = recvp(httpchan);

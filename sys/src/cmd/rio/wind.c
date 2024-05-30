@@ -198,11 +198,9 @@ winctl(void *arg)
 	Consreadmesg cwrm;
 	Stringpair pair;
 	Wctlmesg wcm;
-	char buf[4*12+1];
 
 	w = arg;
-	snprint(buf, sizeof buf, "winctl-id%d", w->id);
-	threadsetname(buf);
+	threadsetname("winctl-id%d", w->id);
 
 	mrm.cm = chancreate(sizeof(Mouse), 0);
 	cwm.cw = chancreate(sizeof(Stringpair), 0);

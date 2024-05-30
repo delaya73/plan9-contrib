@@ -178,7 +178,7 @@ findrdreq(Client *c, Req *r)
 			*l = r->aux;
 			if(*l == nil)
 				c->erq = l;
-			respond(r, "flushed");
+			respond(r, "interrupted");
 			break;
 		}
 	}
@@ -194,7 +194,7 @@ findwrreq(Client *c, Req *r)
 			*l = r->aux;
 			if(*l == nil)
 				c->ewq = l;
-			respond(r, "flushed");
+			respond(r, "interrupted");
 			return;
 		}
 	}
@@ -215,11 +215,9 @@ readthread(void *a)
 	Client *c;
 	Ioproc *io;
 	Msg *m;
-	char tmp[32];
 
 	c = a;
-	snprint(tmp, sizeof tmp, "read%d", c->num);
-	threadsetname(tmp);
+	threadsetname("read%d", c->num);
 
 	buf = emalloc(8192);
 	io = c->readerproc;
@@ -252,6 +250,7 @@ clientflush(Req *or, Client *c)
 		if(c->execreq == or){
 			c->execreq = nil;
 			iointerrupt(c->writerproc);
+			ioflush(c->writerproc);
 		}
 		findwrreq(c, or);
 		if(c->curw == or){
@@ -278,11 +277,9 @@ writethread(void *a)
 	Ioproc *io;
 	Req *r;
 	Client *c;
-	char tmp[32];
 
 	c = a;
-	snprint(tmp, sizeof tmp, "write%d", c->num);
-	threadsetname(tmp);
+	threadsetname("write%d", c->num);
 
 	buf = emalloc(8192);
 	io = c->writerproc;
@@ -298,6 +295,7 @@ writethread(void *a)
 		c->wq = r->aux;
 		c->curw = r;
 		n = iowrite(io, c->fd[1], r->ifcall.data, r->ifcall.count);
+		c->curw = nil;
 		if(chatty9p)
 			fprint(2, "io->write returns %d\n", n);
 		if(n >= 0){
@@ -318,11 +316,9 @@ execproc(void *a)
 {
 	int i, fd;
 	Client *c;
-	char tmp[32];
 
 	c = a;
-	snprint(tmp, sizeof tmp, "execproc%d", c->num);
-	threadsetname(tmp);
+	threadsetname("execproc%d", c->num);
 	if(pipe(c->fd) < 0){
 		rerrstr(c->err, sizeof c->err);
 		sendul(c->execpid, -1);
@@ -344,11 +340,9 @@ execthread(void *a)
 {
 	Client *c;
 	int p;
-	char tmp[32];
 
 	c = a;
-	snprint(tmp, sizeof tmp, "exec%d", c->num);
-	threadsetname(tmp);
+	threadsetname("exec%d", c->num);
 	c->execpid = chancreate(sizeof(ulong), 0);
 	proccreate(execproc, c, STACK);
 	p = recvul(c->execpid);
