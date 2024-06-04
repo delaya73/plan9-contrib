@@ -45,8 +45,7 @@ textredraw(Text *t, Rectangle r, Font *f, Image *b, int odx)
 	frinit(t, r, f, b, t->Frame.cols);
 	rr = t->r;
 	rr.min.x -= Scrollwid+Scrollgap;	/* back fill to scroll bar */
-	if(!t->noredraw)
-		draw(t->b, rr, t->cols[BACK], nil, ZP);
+	draw(t->b, rr, t->cols[BACK], nil, ZP);
 	/* use no wider than 3-space tabs in a directory */
 	maxt = maxtab;
 	if(t->what == Body){
@@ -69,13 +68,13 @@ textredraw(Text *t, Rectangle r, Font *f, Image *b, int odx)
 }
 
 int
-textresize(Text *t, Rectangle r, int keepextra)
+textresize(Text *t, Rectangle r, int fillfringe)
 {
 	int odx;
 
 	if(Dy(r) <= 0)
 		r.max.y = r.min.y;
-	else if(!keepextra)
+	else if(!fillfringe)
 		r.max.y -= Dy(r)%t->font->height;
 	odx = Dx(t->all);
 	t->all = r;
@@ -85,12 +84,12 @@ textresize(Text *t, Rectangle r, int keepextra)
 	r.min.x += Scrollwid+Scrollgap;
 	frclear(t, 0);
 	textredraw(t, r, t->font, t->b, odx);
-	if(keepextra && t->r.max.y < t->all.max.y && !t->noredraw){
-		/* draw background in bottom fringe of window */
+	if(fillfringe && t->r.max.y < t->all.max.y){
+		/* draw background in bottom fringe of text window */
 		r.min.x -= Scrollgap;
 		r.min.y = t->r.max.y;
 		r.max.y = t->all.max.y;
-		draw(screen, r, t->cols[BACK], nil, ZP);
+		draw(screen, r, t->cols[BACK], nil, ZP);		
 	}
 	return t->all.max.y;
 }
@@ -221,7 +220,7 @@ textload(Text *t, uint q0, char *file, int setqid)
 		}
 		t->w->isdir = TRUE;
 		t->w->filemenu = FALSE;
-		if(t->file->name[t->file->nname-1] != '/'){
+		if(t->file->nname > 0 && t->file->name[t->file->nname-1] != '/'){
 			rp = runemalloc(t->file->nname+1);
 			runemove(rp, t->file->name, t->file->nname);
 			rp[t->file->nname] = '/';
@@ -510,6 +509,27 @@ textreadc(Text *t, uint q)
 	return r;
 }
 
+static int
+spacesindentbswidth(Text *t)
+{
+	uint q, col;
+	Rune r;
+
+	col = textbswidth(t, 0x15);
+	q = t->q0;
+	while(q > 0){
+		r = textreadc(t, q-1);
+		if(r != ' ')
+			break;
+		q--;
+		if(--col % t->tabstop == 0)
+			break;
+	}
+	if(t->q0 == q)
+		return 1;
+	return t->q0-q;
+}
+
 int
 textbswidth(Text *t, Rune c)
 {
@@ -518,8 +538,11 @@ textbswidth(Text *t, Rune c)
 	int skipping;
 
 	/* there is known to be at least one character to erase */
-	if(c == 0x08)	/* ^H: erase character */
+	if(c == 0x08){	/* ^H: erase character */
+		if(t->what == Body && t->w->indent[SPACESINDENT])
+			return spacesindentbswidth(t);
 		return 1;
+	}
 	q = t->q0;
 	skipping = TRUE;
 	while(q > 0){
@@ -648,37 +671,27 @@ texttype(Text *t, Rune r)
 	uint q0, q1;
 	int nnb, nb, n, i;
 	int nr;
+	Rune rr;
 	Rune *rp;
 	Text *u;
-
-	if(t->what!=Body && t->what!=Tag && r=='\n')
-		return;
-	if(t->what == Tag)
-		t->w->tagsafe = FALSE;
 
 	nr = 1;
 	rp = &r;
 	switch(r){
 	case Kleft:
-		if(t->q0 > 0){
-			typecommit(t);
+		typecommit(t);
+		if(t->q0 > 0)
 			textshow(t, t->q0-1, t->q0-1, TRUE);
-		}
 		return;
 	case Kright:
-		if(t->q1 < t->file->nc){
-			typecommit(t);
+		typecommit(t);
+		if(t->q1 < t->file->nc)
 			textshow(t, t->q1+1, t->q1+1, TRUE);
-		}
 		return;
 	case Kdown:
-		if(t->what == Tag)
-			goto Tagdown;
 		n = t->maxlines/3;
 		goto case_Down;
 	case Kscrollonedown:
-		if(t->what == Tag)
-			goto Tagdown;
 		n = mousescrollsize(t->maxlines);
 		if(n <= 0)
 			n = 1;
@@ -687,23 +700,21 @@ texttype(Text *t, Rune r)
 		n = 2*t->maxlines/3;
 	case_Down:
 		q0 = t->org+frcharofpt(t, Pt(t->r.min.x, t->r.min.y+n*t->font->height));
-		textsetorigin(t, q0, TRUE);
+		if(t->what == Body)
+			textsetorigin(t, q0, TRUE);
 		return;
 	case Kup:
-		if(t->what == Tag)
-			goto Tagup;
 		n = t->maxlines/3;
 		goto case_Up;
 	case Kscrolloneup:
-		if(t->what == Tag)
-			goto Tagup;
 		n = mousescrollsize(t->maxlines);
 		goto case_Up;
 	case Kpgup:
 		n = 2*t->maxlines/3;
 	case_Up:
 		q0 = textbacknl(t, t->org, n);
-		textsetorigin(t, q0, TRUE);
+		if(t->what == Body)
+			textsetorigin(t, q0, TRUE);
 		return;
 	case Khome:
 		typecommit(t);
@@ -727,23 +738,6 @@ texttype(Text *t, Rune r)
 		while(q0<t->file->nc && textreadc(t, q0)!='\n')
 			q0++;
 		textshow(t, q0, q0, TRUE);
-		return;
-
-	Tagdown:
-		/* expand tag to show all text */
-		if(!t->w->tagexpand){
-			t->w->tagexpand = TRUE;
-			winresize(t->w, t->w->r, FALSE, TRUE);
-		}
-		return;
-	
-	Tagup:
-		/* shrink tag to single line */
-		if(t->w->tagexpand){
-			t->w->tagexpand = FALSE;
-			t->w->taglines = 1;
-			winresize(t->w, t->w->r, FALSE, TRUE);
-		}
 		return;
 	}
 	if(t->what == Body){
@@ -813,18 +807,29 @@ texttype(Text *t, Rune r)
 		for(i=0; i<t->file->ntext; i++)
 			textfill(t->file->text[i]);
 		return;
+	case '\t':
+		if(t->what == Body && t->w->indent[SPACESINDENT]){
+			nnb = textbswidth(t, 0x15);
+			if(nnb == 1 && textreadc(t, t->q0-1) == '\n')
+				nnb = 0;
+			nnb = t->tabstop - nnb % t->tabstop;
+			rp = runemalloc(nnb);
+			for(nr = 0; nr < nnb; nr++)
+				rp[nr] = ' ';
+		}
+		break;
 	case '\n':
-		if(t->w->autoindent){
+		if(t->what == Body && t->w->indent[AUTOINDENT]){
 			/* find beginning of previous line using backspace code */
 			nnb = textbswidth(t, 0x15); /* ^U case */
 			rp = runemalloc(nnb + 1);
 			nr = 0;
 			rp[nr++] = r;
 			for(i=0; i<nnb; i++){
-				r = textreadc(t, t->q0-nnb+i);
-				if(r != ' ' && r != '\t')
+				rr = textreadc(t, t->q0-nnb+i);
+				if(rr != ' ' && rr != '\t')
 					break;
-				rp[nr++] = r;
+				rp[nr++] = rr;
 			}
 		}
 		break; /* fall through to normal code */
@@ -871,6 +876,8 @@ textcommit(Text *t, int tofile)
 
 static	Text	*clicktext;
 static	uint	clickmsec;
+static	int	clickcount;
+static	Point	clickpt;
 static	Text	*selecttext;
 static	uint	selectq;
 
@@ -910,6 +917,7 @@ textframescroll(Text *t, int dl)
 			textsetselect(t, selectq, t->org+t->p1);
 	}
 	textsetorigin(t, q0, TRUE);
+	flushimage(display, 1);
 }
 
 
@@ -917,7 +925,7 @@ void
 textselect(Text *t)
 {
 	uint q0, q1;
-	int b, x, y;
+	int b, x, y, dx, dy;
 	int state;
 
 	selecttext = t;
@@ -928,25 +936,36 @@ textselect(Text *t)
 	b = mouse->buttons;
 	q0 = t->q0;
 	q1 = t->q1;
+	dx = abs(clickpt.x - mouse->xy.x);
+	dy = abs(clickpt.y - mouse->xy.y);
+	clickpt = mouse->xy;
 	selectq = t->org+frcharofpt(t, mouse->xy);
-	if(clicktext==t && mouse->msec-clickmsec<500)
-	if(q0==q1 && selectq==q0){
-		textdoubleclick(t, &q0, &q1);
+	clickcount++;
+	if(mouse->msec-clickmsec >= 500 || selecttext != t || clickcount > 3 || dx > 3 || dy > 3)
+		clickcount = 0;
+	if(clickcount >= 1 && selecttext==t && mouse->msec-clickmsec < 500){
+		textstretchsel(t, selectq, &q0, &q1, clickcount);
 		textsetselect(t, q0, q1);
 		flushimage(display, 1);
 		x = mouse->xy.x;
 		y = mouse->xy.y;
 		/* stay here until something interesting happens */
-		do
+		while(1){
 			readmouse(mousectl);
-		while(mouse->buttons==b && abs(mouse->xy.x-x)<3 && abs(mouse->xy.y-y)<3);
+			dx = abs(mouse->xy.x - x);
+			dy = abs(mouse->xy.y - y);
+			if(mouse->buttons != b || dx >= 3 || dy >= 3)
+				break;
+			clickcount++;
+			clickmsec = mouse->msec;
+		}
 		mouse->xy.x = x;	/* in case we're calling frselect */
 		mouse->xy.y = y;
 		q0 = t->q0;	/* may have changed */
 		q1 = t->q1;
-		selectq = q0;
+		selectq = t->org+frcharofpt(t, mouse->xy);;
 	}
-	if(mouse->buttons == b){
+	if(mouse->buttons == b && clickcount == 0){
 		t->Frame.scroll = framescroll;
 		frselect(t, mousectl);
 		/* horrible botch: while asleep, may have lost selection altogether */
@@ -963,13 +982,11 @@ textselect(Text *t)
 			q1 = t->org+t->p1;
 	}
 	if(q0 == q1){
-		if(q0==t->q0 && clicktext==t && mouse->msec-clickmsec<500){
-			textdoubleclick(t, &q0, &q1);
-			clicktext = nil;
-		}else{
+		if(q0==t->q0 && mouse->msec-clickmsec<500)
+			textstretchsel(t, selectq, &q0, &q1, clickcount);
+		else
 			clicktext = t;
-			clickmsec = mouse->msec;
-		}
+		clickmsec = mouse->msec;
 	}else
 		clicktext = nil;
 	textsetselect(t, q0, q1);
@@ -1008,7 +1025,8 @@ textselect(Text *t)
 		flushimage(display, 1);
 		while(mouse->buttons == b)
 			readmouse(mousectl);
-		clicktext = nil;
+		if(mouse->msec-clickmsec >= 500)
+			clicktext = nil;
 	}
 }
 
@@ -1291,13 +1309,21 @@ Rune *right[] = {
 	nil
 };
 
+int
+inmode(Rune r, int mode)
+{
+	return (mode == 1) ? isalnum(r) : r && !isspace(r);
+}
+
 void
-textdoubleclick(Text *t, uint *q0, uint *q1)
+textstretchsel(Text *t, uint mp, uint *q0, uint *q1, int mode)
 {
 	int c, i;
 	Rune *r, *l, *p;
 	uint q;
 
+	*q0 = mp;
+	*q1 = mp;
 	for(i=0; left[i]!=nil; i++){
 		q = *q0;
 		l = left[i];
@@ -1330,10 +1356,10 @@ textdoubleclick(Text *t, uint *q0, uint *q1)
 		}
 	}
 	/* try filling out word to right */
-	while(*q1<t->file->nc && isalnum(textreadc(t, *q1)))
+	while(*q1<t->file->nc && inmode(textreadc(t, *q1), mode))
 		(*q1)++;
 	/* try filling out word to left */
-	while(*q0>0 && isalnum(textreadc(t, *q0-1)))
+	while(*q0>0 && inmode(textreadc(t, *q0-1), mode))
 		(*q0)--;
 }
 
@@ -1393,7 +1419,7 @@ textsetorigin(Text *t, uint org, int exact)
 	Rune *r;
 	uint n;
 
-	if(org>0 && !exact){
+	if(org>0 && !exact && textreadc(t, org-1) != '\n'){
 		/* org is an estimate of the char posn; find a newline */
 		/* don't try harder than 256 chars */
 		for(i=0; i<256 && org<t->file->nc; i++){

@@ -77,12 +77,22 @@ extern	Rune*	runestrrchr(Rune*, Rune);
 extern	long	runestrlen(Rune*);
 extern	Rune*	runestrstr(Rune*, Rune*);
 
+extern	int	runecomp(Rune*, Rune*, int);
+extern	int	runedecomp(Rune*, Rune*, int);
+extern	int	utfcomp(char*, char*, int);
+extern	int	utfdecomp(char*, char*, int);
+extern	char*	fullutfnorm(char*,int);
+extern	Rune*	fullrunenorm(Rune*,int);
+
+extern	Rune*	runewbreak(Rune*);
+extern	char*	utfwbreak(char*);
+extern	Rune*	runegbreak(Rune*);
+extern	char*	utfgbreak(char*);
+
 extern	Rune	tolowerrune(Rune);
 extern	Rune	totitlerune(Rune);
 extern	Rune	toupperrune(Rune);
-extern	Rune	tobaserune(Rune);
 extern	int	isalpharune(Rune);
-extern	int	isbaserune(Rune);
 extern	int	isdigitrune(Rune);
 extern	int	islowerrune(Rune);
 extern	int	isspacerune(Rune);
@@ -308,21 +318,42 @@ extern	double	fmod(double, double);
 /*
  * Time-of-day
  */
+typedef struct Tzone Tzone;
+#pragma incomplete Tzone
 
 typedef
 struct Tm
 {
-	int	sec;
-	int	min;
-	int	hour;
-	int	mday;
-	int	mon;
-	int	year;
-	int	wday;
-	int	yday;
-	char	zone[4];
-	int	tzoff;
+	int	nsec;		/* nseconds (range 0...1e9) */
+	int	sec;		/* seconds (range 0..60) */
+	int	min;		/* minutes (0..59) */
+	int	hour;		/* hours (0..23) */
+	int	mday;		/* day of the month (1..31) */
+	int	mon;		/* month of the year (0..11) */
+	int	year;		/* year A.D. */
+	int	wday;		/* day of week (0..6, Sunday = 0) */
+	int	yday;		/* day of year (0..365) */
+	char	zone[16];	/* time zone name */
+	int	tzoff;		/* time zone delta from GMT */
+	Tzone	*tz;		/* time zone associated with this date */
 } Tm;
+
+typedef
+struct Tmfmt {
+	char	*fmt;
+	Tm	*tm;
+} Tmfmt;
+
+#pragma varargck	type	"τ"	Tmfmt
+
+extern	Tzone*	tzload(char *name);
+extern	Tm*	tmnow(Tm*, Tzone*);
+extern	Tm*	tmtime(Tm*, vlong, Tzone*);
+extern	Tm*	tmtimens(Tm*, vlong, int, Tzone*);
+extern	Tm*	tmparse(Tm*, char*, char*, Tzone*, char **ep);
+extern	vlong	tmnorm(Tm*);
+extern	Tmfmt	tmfmt(Tm*, char*);
+extern	void	tmfmtinstall(void);
 
 extern	Tm*	gmtime(long);
 extern	Tm*	localtime(long);

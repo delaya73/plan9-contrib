@@ -19,9 +19,12 @@ struct convert *conv(char *, int);
 typedef void (*Infn)(int, long *, struct convert *);
 typedef void (*Outfn)(Rune *, int, long *);
 void outtable(Rune *, int, long *);
+int fixsurrogate(Rune *rp, Rune r2);
 
 void utf_in(int, long *, struct convert *);
 void utf_out(Rune *, int, long *);
+void utfnfc_out(Rune *, int, long *);
+void utfnfd_out(Rune *, int, long *);
 void isoutf_in(int, long *, struct convert *);
 void isoutf_out(Rune *, int, long *);
 
@@ -36,11 +39,4 @@ extern char obuf[UTFmax*N];	/* maximum bloat from N runes */
 #define		BYTEBADMAP	('?')		/* badmap but has to fit in a byte */
 #define		ESC		033
 
-#ifdef	PLAN9
-#define	EPR		fprint(2,
-#define	EXIT(n,s)	exits(s)
-#else
-#define	EPR		fprintf(stderr,
-#define	USED(x)		/* in plan 9, USED(x) tells the compiler to treat x as used */
-#define	EXIT(n,s)	exit(n)
-#endif
+void warn(char*, ...);

@@ -61,7 +61,7 @@ range(char *argv[])
 			goto err;
 		i = 0;
 		do{
-			Bprint(&bout, "%.6x %C", min, min);
+			Bprint(&bout, "%.4x %C", min, min);
 			i++;
 			if(min==max || (i&7)==0)
 				Bprint(&bout, "\n");
@@ -79,22 +79,21 @@ nums(char *argv[])
 {
 	char *q;
 	Rune r;
-	int w, rsz;
-	char utferr[UTFmax];
+	int w;
 
-	r = Runeerror;
-	rsz = runetochar(utferr, &r);
 	while(*argv){
 		q = *argv;
 		while(*q){
 			w = chartorune(&r, q);
 			if(r==Runeerror){
-				if(strlen(q) != rsz || memcmp(q, utferr, rsz) != 0){
+				char b[UTFmax];
+
+				if(runetochar(b, &r) != w || memcmp(b, q, w) != 0){
 					fprint(2, "unicode: invalid utf string %s\n", *argv);
 					return "bad utf";
 				}
 			}
-			Bprint(&bout, "%.6x\n", r);
+			Bprint(&bout, "%.4x\n", r);
 			q += w;
 		}
 		argv++;

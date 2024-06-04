@@ -320,6 +320,7 @@ StringInt	chartab[]= {
 	{L"amp", 38},
 	{L"and", 8743},
 	{L"ang", 8736},
+	{L"apos", 39},
 	{L"aring", 229},
 	{L"asymp", 8776},
 	{L"atilde", 227},
@@ -610,6 +611,7 @@ _gettoks(uchar* data, int datalen, int chset, int mtype, int* plen)
 	a = 0;
 	if(ts->mtype == TextHtml) {
 		for(;;) {
+			assert(ai <= alen);
 			if(alen - ai < ToksChunk/32) {
 				alen += ToksChunk;
 				a = erealloc(a, alen*sizeof *a);
@@ -638,6 +640,7 @@ _gettoks(uchar* data, int datalen, int chset, int mtype, int* plen)
 	else {
 		// plain text (non-html) tokens
 		for(;;) {
+			assert(ai <= alen);
 			if(alen - ai < ToksChunk/32) {
 				alen += ToksChunk;
 				a = erealloc(a, alen*sizeof *a);
@@ -731,6 +734,7 @@ buftostr(Rune* s, Rune* buf, int j)
 		memcpy(&s[i], buf, j*sizeof *s);
 		s[i+j] = 0;
 	}
+	setmalloctag(s, getcallerpc(&s));
 	return s;
 }
 
@@ -899,6 +903,7 @@ gettag(TokenSource* ts, int starti, Token* a, int* pai)
 	Token*	tok;
 	Rune	buf[BIGBUFSIZE];
 
+	al = nil;
 	rbra = 0;
 	nexti = ts->i;
 	tok = &a[*pai];
@@ -947,7 +952,6 @@ gettag(TokenSource* ts, int starti, Token* a, int* pai)
 	else
 		tok->text = _Strndup(buf, i);	// for warning print, in build
 	// attribute gathering loop
-	al = nil;
 	while(1) {
 		// look for "ws name" or "ws name ws = ws val"  (ws=whitespace)
 		// skip whitespace
@@ -1112,6 +1116,7 @@ eob_done:
 	if(warn)
 		fprint(2, "warning: incomplete tag at end of page\n");
 	backup(ts, nexti);
+	freeattrs(al);
 	tok->tag = Data;
 	tok->text = _Strdup(L"<");
 	return Data;
@@ -1310,9 +1315,9 @@ getchar(TokenSource* ts)
 		break;
 	case UTF_8:
 		ok = fullrune((char*)(buf+ts->i), ts->edata-ts->i);
-		n = chartorune(&r, (char*)(buf+ts->i));
 		if(ok) {
-			if(warn && c == 0x80)
+			n = chartorune(&r, (char*)(buf+ts->i));
+			if(warn && c == Runeerror)
 				fprint(2, "warning: invalid utf-8 sequence (starts with %x)\n", ts->data[ts->i]);
 			ts->i += n;
 			c = r;
@@ -1418,7 +1423,7 @@ Tconv(Fmt *f)
 
 	t = va_arg(f->args, Token*);
 	if(t == nil)
-		snprint(buf, sizeof buf, "<null>");
+		sprint(buf, "<null>");
 	else {
 		i = 0;
 		if(dbglex > 1)
@@ -1461,6 +1466,7 @@ newattr(int attid, Rune* value, Attr* link)
 	ans->attid = attid;
 	ans->value = value;
 	ans->next = link;
+	setmalloctag(ans, getcallerpc(&attid));
 	return ans;
 }
 

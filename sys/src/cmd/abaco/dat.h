@@ -303,7 +303,7 @@ enum
 
 	BUFSIZE =		1024*8,
 	RBUFSIZE =	BUFSIZE/sizeof(Rune),
-	STACK =		64*1024,
+	STACK =		128*1024,
 };
 
 enum
@@ -343,12 +343,6 @@ int			plumbsendfd;
 int			webctlfd;
 char			*charset;
 int			procstderr;
-
-enum
-{
-	Kscrolloneup		= KF|0x20,
-	Kscrollonedown	= KF|0x21,
-};
 
 Channel		*cplumb;		/* chan(Plumbmsg*) */
 Channel		*cexit;		/* chan(int) */

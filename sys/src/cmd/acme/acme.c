@@ -58,7 +58,6 @@ threadmain(int argc, char *argv[])
 	Column *c;
 	int ncol;
 	Display *d;
-	static void *arg[1];
 
 	rfork(RFENVG|RFNAMEG);
 
@@ -67,7 +66,7 @@ threadmain(int argc, char *argv[])
 	loadfile = nil;
 	ARGBEGIN{
 	case 'a':
-		globalautoindent = TRUE;
+		globalindent[AUTOINDENT] = TRUE;
 		break;
 	case 'b':
 		bartflag = TRUE;
@@ -90,6 +89,9 @@ threadmain(int argc, char *argv[])
 		if(fontnames[1] == nil)
 			goto Usage;
 		break;
+	case 'i':
+		globalindent[SPACESINDENT] = TRUE;
+		break;
 	case 'l':
 		loadfile = ARGF();
 		if(loadfile == nil)
@@ -97,7 +99,7 @@ threadmain(int argc, char *argv[])
 		break;
 	default:
 	Usage:
-		fprint(2, "usage: acme [-ab] [-c ncol] [-f font] [-F fixedfont] [-l loadfile | file...]\n");
+		fprint(2, "usage: acme [-aib] [-c ncol] [-f font] [-F fixedfont] [-l loadfile | file...]\n");
 		exits("usage");
 	}ARGEND
 
@@ -165,21 +167,21 @@ threadmain(int argc, char *argv[])
 	cedit = chancreate(sizeof(int), 0);
 	cexit = chancreate(sizeof(int), 0);
 	cwarn = chancreate(sizeof(void*), 1);
-	if(cwait==nil || ccommand==nil || ckill==nil || cxfidalloc==nil || cxfidfree==nil || cerr==nil || cexit==nil || cwarn==nil){
+	if(cwait==nil || ccommand==nil || ckill==nil || cxfidalloc==nil || cxfidfree==nil || cnewwindow==nil || cerr==nil || cedit==nil || cexit==nil || cwarn==nil){
 		fprint(2, "acme: can't create initial channels: %r\n");
-		exits("channels");
+		threadexitsall("channels");
 	}
 
 	mousectl = initmouse(nil, screen);
 	if(mousectl == nil){
 		fprint(2, "acme: can't initialize mouse: %r\n");
-		exits("mouse");
+		threadexitsall("mouse");
 	}
 	mouse = mousectl;
 	keyboardctl = initkeyboard(nil);
 	if(keyboardctl == nil){
 		fprint(2, "acme: can't initialize keyboard: %r\n");
-		exits("keyboard");
+		threadexitsall("keyboard");
 	}
 	mainpid = getpid();
 	plumbeditfd = plumbopen("edit", OREAD|OCEXEC);
@@ -256,6 +258,7 @@ readfile(Column *c, char *s)
 	winsettag(w);
 	textscrdraw(&w->body);
 	textsetselect(&w->tag, w->tag.file->nc, w->tag.file->nc);
+	xfidlog(w, "new");
 }
 
 char *oknotes[] ={
@@ -292,9 +295,6 @@ killprocs(void)
 	Command *c;
 
 	fsysclose();
-//	if(display)
-//		flushimage(display, 1);
-
 	for(c=command; c; c=c->next)
 		postnote(PNGROUP, c->pid, "hangup");
 	remove(acmeerrorfile);
@@ -305,15 +305,17 @@ static int errorfd;
 void
 acmeerrorproc(void *)
 {
-	char *buf;
+	char *buf, *s;
 	int n;
 
 	threadsetname("acmeerrorproc");
 	buf = emalloc(8192+1);
 	while((n=read(errorfd, buf, 8192)) >= 0){
 		buf[n] = '\0';
-		sendp(cerr, estrdup(buf));
+		s = estrdup(buf);
+		sendp(cerr, s);
 	}
+	free(buf);
 }
 
 void
@@ -324,7 +326,7 @@ acmeerrorinit(void)
 
 	if(pipe(pfd) < 0)
 		error("can't create pipe");
-	sprint(acmeerrorfile, "/srv/acme.%s.%d", getuser(), mainpid);
+	sprint(acmeerrorfile, "/srv/acme.%s.%d", user, mainpid);
 	fd = create(acmeerrorfile, OWRITE, 0666);
 	if(fd < 0){
 		remove(acmeerrorfile);
@@ -483,6 +485,12 @@ mousethread(void *)
 			m = mousectl->Mouse;
 			qlock(&row);
 			t = rowwhich(&row, m.xy);
+
+			if((t!=mousetext && t!=nil && t->w!=nil) &&
+				(mousetext==nil || mousetext->w==nil || t->w->id!=mousetext->w->id)) {
+				xfidlog(t->w, "focus");
+			}
+
 			if(t!=mousetext && mousetext!=nil && mousetext->w!=nil){
 				winlock(mousetext->w, 'M');
 				mousetext->eq0 = ~0;
@@ -769,6 +777,7 @@ newwindowthread(void*)
 		recvp(cnewwindow);
 		w = makenewwindow(nil);
 		winsettag(w);
+		xfidlog(w, "new");
 		sendp(cnewwindow, w);
 	}
 }
@@ -883,16 +892,14 @@ iconinit(void)
 		freeimage(colbutton);
 	}
 
-	r = Rect(0, 0, Scrollwid+2, font->height+1);
+	r = Rect(0, 0, Scrollwid, font->height+1);
 	button = allocimage(display, r, screen->chan, 0, DNofill);
 	draw(button, r, tagcols[BACK], nil, r.min);
-	r.max.x -= 2;
 	border(button, r, 2, tagcols[BORD], ZP);
 
 	r = button->r;
 	modbutton = allocimage(display, r, screen->chan, 0, DNofill);
 	draw(modbutton, r, tagcols[BACK], nil, r.min);
-	r.max.x -= 2;
 	border(modbutton, r, 2, tagcols[BORD], ZP);
 	r = insetrect(r, 2);
 	tmp = allocimage(display, Rect(0,0,1,1), screen->chan, 1, DMedblue);

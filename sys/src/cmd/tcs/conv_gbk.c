@@ -1,12 +1,6 @@
-#ifdef	PLAN9
 #include	<u.h>
 #include	<libc.h>
 #include	<bio.h>
-#else
-#include	<stdio.h>
-#include	<unistd.h>
-#include	"plan9.h"
-#endif
 #include	"hdr.h"
 #include	"conv.h"
 #include	"gbk.h"
@@ -39,7 +33,7 @@ gbkproc(int c, Rune **r, long input_loc)
 		if(ch < 0){
 			nerrors++;
 			if(squawk)
-				EPR "%s: bad gbk glyph %d (from 0x%x,0x%lx) near byte %ld in %s\n", argv0, (c & 0xFF), lastc, cold, input_loc, file);
+				warn("bad gbk glyph %d (from 0x%x,0x%lx) near byte %ld in %s", (c & 0xFF), lastc, cold, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 			state = state0;
@@ -51,7 +45,7 @@ gbkproc(int c, Rune **r, long input_loc)
 }
 
 void
-gbk_in(int fd, long *notused, struct convert *out)
+gbk_in(int fd, long *, struct convert *out)
 {
 	Rune ob[N];
 	Rune *r, *re;
@@ -59,7 +53,6 @@ gbk_in(int fd, long *notused, struct convert *out)
 	int n, i;
 	long nin;
 
-	USED(notused);
 	r = ob;
 	re = ob+N-3;
 	nin = 0;
@@ -84,14 +77,13 @@ gbk_in(int fd, long *notused, struct convert *out)
 
 
 void
-gbk_out(Rune *base, int n, long *notused)
+gbk_out(Rune *base, int n, long *)
 {
 	char *p;
 	int i;
 	Rune r;
 	static int first = 1;
 
-	USED(notused);
 	if(first){
 		first = 0;
 		for(i = 0; i < NRUNE; i++)
@@ -106,14 +98,14 @@ gbk_out(Rune *base, int n, long *notused)
 		if(r < 0x80)
 			*p++ = r;
 		else {
-			if(tab[r] != -1){
+			if(r < NRUNE && tab[r] != -1){
 				r = tab[r];
 				*p++ = (r>>8) & 0xFF;
 				*p++ = r & 0xFF;
 				continue;
 			}
 			if(squawk)
-				EPR "%s: rune 0x%x not in output cs\n", argv0, r);
+				warn("rune 0x%x not in output cs", r);
 			nerrors++;
 			if(clean)
 				continue;

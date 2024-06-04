@@ -4,62 +4,59 @@
 #include <thread.h>
 #include <keyboard.h>
 
-
 void
 closekeyboard(Keyboardctl *kc)
 {
 	if(kc == nil)
 		return;
-
-	postnote(PNPROC, kc->pid, "kill");
-
-#ifdef BUG
-	/* Drain the channel */
-	while(?kc->c)
-		<-kc->c;
-#endif
-
 	close(kc->ctlfd);
 	close(kc->consfd);
-	free(kc->file);
-	free(kc->c);
-	free(kc);
+	kc->consfd = kc->ctlfd = -1;
+	threadint(kc->pid);
 }
 
 static
 void
 _ioproc(void *arg)
 {
-	int m, n;
+	int m, n, nerr;
 	char buf[20];
 	Rune r;
 	Keyboardctl *kc;
 
 	kc = arg;
 	threadsetname("kbdproc");
-	kc->pid = getpid();
 	n = 0;
-	for(;;){
+	nerr = 0;
+	while(kc->consfd >= 0){
+		m = read(kc->consfd, buf+n, sizeof buf-n);
+		if(m <= 0){
+			yield();	/* if error is due to exiting, we'll exit here */
+			if(kc->consfd < 0)
+				break;
+			fprint(2, "keyboard: short read: %r\n");
+			if(m<0 || ++nerr>10)
+				threadexits("read error");
+			continue;
+		}
+		nerr = 0;
+		n += m;
 		while(n>0 && fullrune(buf, n)){
 			m = chartorune(&r, buf);
 			n -= m;
 			memmove(buf, buf+m, n);
-			send(kc->c, &r);
+			if(send(kc->c, &r) < 0)
+				break;
 		}
-		m = read(kc->consfd, buf+n, sizeof buf-n);
-		if(m <= 0){
-			yield();	/* if error is due to exiting, we'll exit here */
-			fprint(2, "keyboard read error: %r\n");
-			threadexits("error");
-		}
-		n += m;
 	}
+	chanfree(kc->c);
+	free(kc->file);
+	free(kc);
 }
 
 Keyboardctl*
 initkeyboard(char *file)
 {
-	int nb;
 	Keyboardctl *kc;
 	char *t;
 
@@ -70,14 +67,13 @@ initkeyboard(char *file)
 		file = "/dev/cons";
 	kc->file = strdup(file);
 	kc->consfd = open(file, ORDWR|OCEXEC);
-	nb = strlen(file)+16;
-	t = malloc(nb);
+	t = malloc(strlen(file)+16);
 	if(kc->consfd<0 || t==nil){
 Error1:
 		free(kc);
 		return nil;
 	}
-	snprint(t, nb, "%sctl", file);
+	sprint(t, "%sctl", file);
 	kc->ctlfd = open(t, OWRITE|OCEXEC);
 	if(kc->ctlfd < 0){
 		fprint(2, "initkeyboard: can't open %s: %r\n", t);
@@ -93,7 +89,7 @@ Error2:
 	}
 	free(t);
 	kc->c = chancreate(sizeof(Rune), 20);
-	proccreate(_ioproc, kc, 4096);
+	kc->pid = proccreate(_ioproc, kc, 4096);
 	return kc;
 }
 

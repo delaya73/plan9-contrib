@@ -12,7 +12,6 @@ char urlexpr[] =
 	"://([a-zA-Z0-9_@\\-]+([.:][a-zA-Z0-9_@\\-]+)*)";
 Reprog	*urlprog;
 
-int newitextitem;
 int inword = 0;
 int col = 0;
 int wordi = 0;
@@ -69,7 +68,7 @@ emitword(Bytes *b, Rune *r, int nr)
 	if(nr == 0)
 		return;
 	s = smprint("%.*S", nr, r);
-	space = b->n > 0 && !isspace(b->b[b->n-1]) && (!newitextitem || !closingpunct(*s));
+	space = b->n > 0 && !isspace(b->b[b->n-1]) && !closingpunct(*s);
 	if(col > 0 && col+space+nr > width){
 		growbytes(b, "\n", 1);
 		space = 0;
@@ -83,15 +82,12 @@ emitword(Bytes *b, Rune *r, int nr)
 	col += nr;
 	free(s);
 	inword = 0;
-	newitextitem = 0;
 }
 
 void
 renderrunes(Bytes *b, Rune *r)
 {
 	int i, n;
-
-	newitextitem = 1;
 
 	n = runestrlen(r);
 	for(i=0; i<n; i++){
@@ -216,10 +212,8 @@ render(URLwin *u, Bytes *t, Item *items, int curanchor)
 			it = (Itext*)il;
 			if(it->state & IFwrap)
 				renderrunes(t, it->s);
-			else {
-				newitextitem = 1;
+			else
 				emitword(t, it->s, runestrlen(it->s));
-			}
 			break;
 		case Iruletag:
 			if(t->n>0 && t->b[t->n-1]!='\n')
@@ -291,40 +285,13 @@ rerender(URLwin *u)
 	free(t);
 }
 
-/*
- * Somewhat of a hack.  Not a full parse, just looks for strings in the beginning
- * of the document (cistrstr only looks at first somewhat bytes).
- */
-int
-charset(char *s)
-{
-	char *meta, *emeta, *charset;
-
-	if(defcharset == 0)
-		defcharset = ISO_8859_1;
-	meta = cistrstr(s, "<meta");
-	if(meta == nil)
-		return defcharset;
-	for(emeta=meta; *emeta!='>' && *emeta!='\0'; emeta++)
-		;
-	charset = cistrstr(s, "charset=");
-	if(charset == nil)
-		return defcharset;
-	charset += 8;
-	if(*charset == '"')
-		charset++;
-	if(cistrncmp(charset, "utf-8", 5) || cistrncmp(charset, "utf8", 4))
-		return UTF_8;
-	return defcharset;
-}
-
 void
 rendertext(URLwin *u, Bytes *b)
 {
 	Rune *rurl;
 
-	rurl = toStr((uchar*)u->url, strlen(u->url), ISO_8859_1);
-	u->items = parsehtml(b->b, b->n, rurl, u->type, charset((char*)b->b), &u->docinfo);
+	rurl = toStr((uchar*)u->url, strlen(u->url), UTF_8);
+	u->items = parsehtml(b->b, b->n, rurl, u->type, UTF_8, &u->docinfo);
 //	free(rurl);
 
 	rerender(u);

@@ -19,7 +19,7 @@ is shortened to
 .PP
 In Plan 9, a
 .I rune
-is a 21-bit quantity representing a Unicode character.
+is a 32-bit quantity representing a Unicode character.
 Internally, programs may store characters as runes.
 However, any external manifestation of textual information,
 in files or at the interface between programs, uses a
@@ -65,19 +65,19 @@ a rune x is converted to a multibyte
 sequence
 as follows:
 .PP
-01.   x in [000000.00000000.0bbbbbbb] → 0bbbbbbb
+001.   x in [00000000.00000000.0bbbbbbb] → 0bbbbbbb
 .br
-10.   x in [000000.00000bbb.bbbbbbbb] → 110bbbbb, 10bbbbbb
+010.   x in [00000000.00000bbb.bbbbbbbb] → 110bbbbb, 10bbbbbb
 .br
-11.   x in [000000.bbbbbbbb.bbbbbbbb] → 1110bbbb, 10bbbbbb, 10bbbbbb
+011.   x in [00000000.bbbbbbbb.bbbbbbbb] → 1110bbbb, 10bbbbbb, 10bbbbbb
 .br
-100. x in [bbbbbb.bbbbbbbb.bbbbbbbb] → 1110bbbb, 10bbbbbb, 10bbbbbb, 10bbbbbb
+100.   x in [000bbbbb.bbbbbbbb.bbbbbbbb] → 11110bbb, 10bbbbbb, 10bbbbbb, 10bbbbbb
 .br
 .PP
-Conversion 01 provides a one-byte sequence that spans the
+Conversion 001 provides a one-byte sequence that spans the
 .SM ASCII
 character set in a compatible way.
-Conversions 10, 11 and 100 represent higher-valued characters
+Conversions 010, 011 and 100 represent higher-valued characters
 as sequences of two, three or four bytes with the high bit set.
 Plan 9 does not support the 5 and 6 byte sequences proposed by X-Open.
 When there are multiple ways to encode a value, for example rune 0,
@@ -87,9 +87,9 @@ In the inverse mapping,
 any sequence except those described above
 is incorrect and is converted to rune hexadecimal FFFD.
 .SH FILES
-.TF "/lib/unicode "
+.TF "/lib/ucd/UnicodeData.txt "
 .TP
-.B /lib/unicode
+.B /lib/ucd/UnicodeData.txt
 table of characters and descriptions, suitable for
 .IR look (1).
 .SH "SEE ALSO"

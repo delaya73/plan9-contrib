@@ -9,7 +9,7 @@ enum
 	NPIPEDATA	= 8000,
 	NPIPE		= NPIPEDATA+32,
 	/* EVENTSIZE is really 256 in acme, but we use events internally and want bigger buffers */
-	EVENTSIZE	= 16*1024,
+	EVENTSIZE	= 8192,
 	NEVENT		= 5,
 };
 
@@ -65,7 +65,7 @@ extern	void		winclean(Window*);
 extern	int		winselect(Window*, char*, int);
 extern	int		winsetaddr(Window*, char*, int);
 extern	void		windormant(Window*);
-extern	void		winsetdump(Window*, char*, char*);
+extern	void		winsetdir(Window*, char*, char*);
 
 extern	void		ctlprint(int, char*, ...);
 extern	void*	emalloc(uint);
@@ -79,7 +79,7 @@ extern	void		startpipe(void);
 extern	void		sendit(char*);
 extern	void		execevent(Window *w, Event *e, int (*)(Window*, char*));
 
-extern	void		mountcons(void);
+extern	void		mountcons(void*);
 extern	void		fsloop(void*);
 
 extern	int		newpipewin(int, char*);
@@ -90,6 +90,8 @@ extern	void		pipectl(void*);
 #pragma	varargck	argpos	error	1
 #pragma	varargck	argpos	ctlprint	2
 
+extern	char *wname;
+extern	char *wdir;
 extern	Window	*win;
 extern	Channel	*fschan, *writechan;
 

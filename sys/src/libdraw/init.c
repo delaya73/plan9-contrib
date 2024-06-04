@@ -110,14 +110,10 @@ geninitdraw(char *devdir, void(*error)(Display*, char*), char *fontname, char *l
 }
 
 int
-initdraw(void(*error)(Display*, char*), char *fontname , char *label)
+initdraw(void(*error)(Display*, char*), char *fontname, char *label)
 {
-	char *dev = "/dev";
+	static char dev[] = "/dev";
 
-	if(access("/dev/draw/new", AEXIST)<0 && bind("#i", "/dev", MAFTER)<0){
-		fprint(2, "imageinit: can't bind /dev/draw: %r\n");
-		return -1;
-	}
 	return geninitdraw(dev, error, fontname, label, dev, Refnone);
 }
 
@@ -223,16 +219,11 @@ initdisplay(char *dev, char *win, void(*error)(Display*, char*))
 	snprint(buf, sizeof buf, "%s/draw/new", dev);
 	ctlfd = open(buf, ORDWR|OCEXEC);
 	if(ctlfd < 0){
-		if(bind("#i", dev, MAFTER) < 0){
     Error1:
-			free(t);
-			werrstr("initdisplay: %s: %r", buf);
-			return 0;
-		}
-		ctlfd = open(buf, ORDWR|OCEXEC);
+		free(t);
+		werrstr("initdisplay: %s: %r", buf);
+		return 0;
 	}
-	if(ctlfd < 0)
-		goto Error1;
 	if((n=read(ctlfd, info, sizeof info)) < 12){
     Error2:
 		close(ctlfd);

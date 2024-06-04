@@ -17,9 +17,6 @@ sam, B, sam.save, samterm \- screen editor with structural regular expressions
 .B sam.save
 .PP
 .B B
-[
-.BI -nnnn
-]
 .I file ...
 .SH DESCRIPTION
 .I Sam
@@ -45,6 +42,15 @@ Autoindent.  In this mode, when a newline character is typed
 in the terminal interface,
 .I samterm
 copies leading white space on the current line to the new line.
+.TP
+.B -i
+Indent with spaces.
+In this mode, when a tab character is typed
+in the terminal interface,
+.I samterm
+will insert spaces until the next tabstop.
+Backspace will delete spaces until the previous tabstop
+or another character is encountered.
 .TP
 .B -d
 Do not `download' the terminal part of
@@ -397,10 +403,10 @@ Print the text in the range.
 Set dot.
 .TP
 .B =
-Print the line address and character address of the range.
+Print the file name and line address of the range.
 .TP
 .B =#
-Print just the character address of the range.
+Print the file name and character address of the range.
 .PD
 .SS File commands
 .PD 0
@@ -487,10 +493,19 @@ Plan 9 command.
 Send the range to the standard input of the
 Plan 9 command.
 .TP
+.BI ^ " Plan 9-command
+Send the standard output of the Plan 9 command
+to the command window.
+.TP
 .BI | " Plan 9-command
 Send the range to the standard input, and replace it by
 the standard output, of the
 Plan 9 command.
+.TP
+.BI _ " Plan 9-command
+Send the range to the standard input, and send the
+standard output of the Plan 9 command to the command
+window.
 .TP
 .BI \*a! " Plan 9-command
 Run the
@@ -506,6 +521,8 @@ is used.
 In any of
 .BR < ,
 .BR > ,
+.BR ^ ,
+.BR _ ,
 .B |
 or
 .BR ! ,
@@ -534,6 +551,12 @@ and
 for all) is placed in
 .B /tmp/sam.err
 and the first few lines are printed.
+.PP
+Sam sets two environmental variables depending on the current file.
+.I $%
+is set to the file name.
+.I $%dot
+is set to a list consisting of three values that define the dot.
 .SS Loops and Conditionals
 .PD 0
 .TP
@@ -607,7 +630,7 @@ and
 do not have defaults.
 .PD
 .SS Miscellany
-.TF (empty)
+.TF M_command
 .TP
 .B k
 Set the current file's mark to the range.  Does not set dot.
@@ -630,6 +653,7 @@ Successive
 move further back in time.
 The only commands for which u is ineffective are
 .BR cd ,
+.BR M ,
 .BR u ,
 .BR q ,
 .B w
@@ -640,6 +664,10 @@ If
 is negative,
 .B u
 `redoes,' undoing the undo, going forwards in time again.
+.TP
+.BI \*aM " command
+Toggle the appearance of a menu entry for the command in the button 2 menu.
+Selecting the entry with button 2 will run the command.
 .TP
 (empty)
 If the range is explicit, set dot to the range.
@@ -700,6 +728,12 @@ Text may be typed and edited as in
 .IR rio (1);
 also the escape key (ESC) selects (sets dot to) text typed
 since the last mouse button hit.
+.PP
+Ctrl+b switches to the command window and moves to the end
+of the text.
+Ctrl+g switches to the last focused window.
+If the focused window is a text window, ctrl+g switches
+to the next zeroxed instance of that window.
 .PP
 The button 3 menu controls window operations.
 The top of the menu
@@ -806,8 +840,10 @@ used.
 The snarf buffer is unaffected.
 .TP
 .B <rio>
-Exchange snarf buffers with
+Exchange dot with snarf buffer of
 .IR rio .
+If dot is the null string, the text in the snarf buffer is
+used.
 .TP
 .BI / regexp
 Search forward for the next match of the last regular expression
@@ -825,25 +861,13 @@ Saves the sent text in the snarf buffer.
 listens to the
 .B edit
 plumb port.
-If plumbing is not active,
-on invocation
-.I sam
-creates a named pipe
-.BI /srv/sam. user
-which acts as an additional source of commands.  Characters written to
-the named pipe are treated as if they had been typed in the command window.
 .PP
 .I B
-is a shell-level command that causes an instance of
-.I sam
-running on the same terminal to load the named
-.IR files .
-.I B
-uses either plumbing or the named pipe, whichever service is available.
-If plumbing is not enabled,
-the option allows a line number to be specified for
-the initial position to display in the last named file
-(plumbing provides a more general mechanism for this ability).
+is a shell command that sends the named
+.IR files
+to the
+.B edit
+port of the plumber.
 .SS Abnormal termination
 If
 .I sam

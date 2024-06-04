@@ -10,12 +10,12 @@ int debug;
 
 enum
 {
-	IDATSIZE = 1000000,
+	IDATSIZE = 8*1024*1024,
 
 	/* filtering algorithms */
 	FilterNone =	0,	/* new[x][y] = buf[x][y] */
 	FilterSub =	1,	/* new[x][y] = buf[x][y] + new[x-1][y] */ 
-	FilterUp =	2,	/* new[x][y] = buf[x][y] + new[x][y-1] */ 
+	FilterUp =		2,	/* new[x][y] = buf[x][y] + new[x][y-1] */ 
 	FilterAvg =	3,	/* new[x][y] = buf[x][y] + (new[x-1][y]+new[x][y-1])/2 */ 
 	FilterPaeth =	4,	/* new[x][y] = buf[x][y] + paeth(new[x-1][y],new[x][y-1],new[x-1][y-1]) */
 	FilterLast =	5,
@@ -144,10 +144,8 @@ zread(void *va)
 		}
 		if(type[0] & PropertyBit)
 			goto Again;  /* skip auxiliary chunks fornow */
-		if(strcmp(type,"IDAT")){
+		if(strcmp(type,"IDAT"))
 			sysfatal("unrecognized mandatory chunk %s", type);
-			goto Again;
-		}
 	}
 	return *z->p++;
 }
@@ -175,6 +173,8 @@ unfilter(int alg, uchar *buf, uchar *up, int len, int bypp)
 	int i;
 
 	switch(alg){
+	default:
+		fprint(2, "unknown filtering scheme %d\n", alg);
 	case FilterNone:
 		break;
 
@@ -201,9 +201,6 @@ unfilter(int alg, uchar *buf, uchar *up, int len, int bypp)
 		for(; i < len; ++i)
 			buf[i] += paeth(buf[i-bypp], up[i], up[i-bypp]);
 		break;
-
-	default:
-		sysfatal("unknown filtering scheme %d\n", alg);
 	}
 }
 
@@ -312,7 +309,7 @@ scanbytes(ZlibW *z)
 	else
 		n = (dx+adx-1)/adx;
 	if(n != 1 + (z->dx - (adam7[z->pass].x+1)) / adam7[z->pass].dx){
-		print("%d/%d != 1+(%d-1)/%d = %d\n",
+		fprint(2, "%d/%d != 1+(%d-1)/%d = %d\n",
 			z->dx - adam7[z->pass].x - 1 + adx, adx,
 			z->dx - (adam7[z->pass].x+1), adam7[z->pass].dx,
 			1 + (z->dx - (adam7[z->pass].x+1)) / adam7[z->pass].dx);
@@ -389,8 +386,8 @@ readslave(Biobuf *b)
 	ZlibW zw;
 
 	buf = pngmalloc(IDATSIZE, 0);
-	if(Bread(b, buf, sizeof PNGmagic) != sizeof PNGmagic ||
-	    memcmp(PNGmagic, buf, sizeof PNGmagic) != 0)
+	if(Bread(b, buf, sizeof PNGmagic) != sizeof PNGmagic
+	|| memcmp(PNGmagic, buf, sizeof PNGmagic) != 0)
 		sysfatal("bad PNGmagic");
 
 	n = getchunk(b, type, buf, IDATSIZE);
@@ -408,7 +405,6 @@ readslave(Biobuf *b)
 
 	bpc = *h++;
 	colorfmt = *h++;
-	nchan = 0;
 	if(*h++ != 0)
 		sysfatal("only deflate supported for now [%d]", h[-1]);
 	if(*h++ != FilterNone)
@@ -418,33 +414,42 @@ readslave(Biobuf *b)
 
 	image = pngmalloc(sizeof(Rawimage), 1);
 	image->r = Rect(0, 0, dx, dy);
-	nout = 0;
 	switch(colorfmt){
 	case 0:	/* grey */
+		if(bpc != 1 && bpc != 2 && bpc != 4 && bpc != 8 && bpc != 16)
+			sysfatal("invalid greyscale bpc %d", bpc);
 		image->nchans = 1;
 		image->chandesc = CY;
 		nout = 1;
 		nchan = 1;
 		break;
 	case 2:	/* rgb */
+		if(bpc != 8 && bpc != 16)
+			sysfatal("invalid rgb bpc %d", bpc);
 		image->nchans = 1;
 		image->chandesc = CRGB24;
 		nout = 3;
 		nchan = 3;
 		break;
 	case 3: /* indexed rgb with PLTE */
+		if(bpc != 1 && bpc != 2 && bpc != 4 && bpc != 8)
+			sysfatal("invalid indexed rgb bpc %d", bpc);
 		image->nchans = 1;
 		image->chandesc = CRGB24;
 		nout = 3;
 		nchan = 1;
 		break;
 	case 4:	/* grey+alpha */
+		if(bpc != 8 && bpc != 16)
+			sysfatal("invalid grey+alpha bpc %d", bpc);
 		image->nchans = 1;
 		image->chandesc = CYA16;
 		nout = 2;
 		nchan = 2;
 		break;
 	case 6:	/* rgb+alpha */
+		if(bpc != 8 && bpc != 16)
+			sysfatal("invalid rgb+alpha bpc %d", bpc);
 		image->nchans = 1;
 		image->chandesc = CRGBA32;
 		nout = 4;

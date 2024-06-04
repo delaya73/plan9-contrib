@@ -33,7 +33,10 @@ void
 rcv(void)
 {
 	int c;
-	static int count = 0, errs = 0, i = 0, state = 0;
+	static state = 0;
+	static count = 0;
+	static i = 0;
+	static int errs = 0;
 
 	while((c=rcvchar()) != -1)
 		switch(state){
@@ -297,6 +300,10 @@ inmesg(Hmesg type, int count)
 	case Hplumb:
 		hplumb(m);
 		break;
+
+	case Hmenucmd:
+		menucmd((char *)indata);
+		break;
 	}
 }
 
@@ -426,7 +433,7 @@ outTv(Tmesg type, vlong v1)
 void
 outTslS(Tmesg type, int s1, long l1, Rune *s)
 {
-	char buf[DATASIZE*3+1];
+	char buf[DATASIZE*UTFmax+1];
 	char *c;
 
 	outstart(type);
@@ -642,17 +649,10 @@ hsetsnarf(int nc)
 	if(n >= 0){
 		if(!s1)
 			n = 0;
-		if(n > SNARFSIZE){
-			s1 = strdup("<snarf too long>");
-			if (!s1)
-				panic("strdup");
-			n = strlen(s1);
-		}else{
-			s1 = realloc(s1, n+1);
-			if (!s1)
-				panic("realloc");
-			s1[n] = 0;
-		}
+		s1 = realloc(s1, n+1);
+		if (!s1)
+			panic("realloc");
+		s1[n] = 0;
 		snarflen = n;
 		outTs(Tsetsnarf, n);
 		if(n>0 && write(1, s1, n)!=n)
@@ -674,7 +674,7 @@ hplumb(int nc)
 	s = alloc(nc);
 	for(i=0; i<nc; i++)
 		s[i] = getch();
-	if(plumbfd > 0){
+	if(plumbfd >= 0){
 		m = plumbunpack(s, nc);
 		if(m != 0)
 			plumbsend(plumbfd, m);

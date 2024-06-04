@@ -75,7 +75,7 @@ coladd(Column *c, Window *w, Window *clone, int y)
 		r.max.y = t;
 		draw(screen, r, textcols[BACK], nil, ZP);
 		r1 = r;
-		y = min(y, t-(v->tag.font->height*v->taglines+v->body.font->height+Border+1));
+		y = min(y, t-(v->tag.font->height+v->body.font->height+Border+1));
 		r1.max.y = min(y, v->body.r.min.y+v->body.nlines*v->body.font->height);
 		r1.min.y = winresize(v, r1, FALSE, FALSE);
 		r1.max.y = r1.min.y+Border;
@@ -84,6 +84,7 @@ coladd(Column *c, Window *w, Window *clone, int y)
 	}
 	if(w == nil){
 		w = emalloc(sizeof(Window));
+		w->rdselfd = -1;
 		w->col = c;
 		draw(screen, r, textcols[BACK], nil, ZP);
 		wininit(w, clone, r);
@@ -130,8 +131,8 @@ colclose(Column *c, Window *w, int dofree)
 		windelete(w);
 		winclose(w);
 	}
-	memmove(c->w+i, c->w+i+1, (c->nw-i)*sizeof(Window*));
 	c->nw--;
+	memmove(c->w+i, c->w+i+1, (c->nw-i)*sizeof(Window*));
 	c->w = realloc(c->w, c->nw*sizeof(Window*));
 	if(c->nw == 0){
 		draw(screen, r, display->white, nil, ZP);
@@ -143,15 +144,16 @@ colclose(Column *c, Window *w, int dofree)
 		r.min.y = w->r.min.y;
 		r.max.y = c->r.max.y;
 	}else{			/* extend next window up */
+		up = 1;
 		w = c->w[i];
 		r.max.y = w->r.max.y;
-		up = 1;
 	}
 	draw(screen, r, textcols[BACK], nil, ZP);
-	if(c->safe){
+	if(c->safe) {
+		if(!didmouse && up)
+			w->showdel = TRUE;
 		winresize(w, r, FALSE, TRUE);
-		USED(up);
-		if(!didmouse)
+		if(!didmouse && up)
 			movetodel(w);
 	}
 }
@@ -184,7 +186,7 @@ colmousebut(Column *c)
 void
 colresize(Column *c, Rectangle r)
 {
-	int i;
+	int i, old, new;
 	Rectangle r1, r2;
 	Window *w;
 
@@ -197,13 +199,19 @@ colresize(Column *c, Rectangle r)
 	r1.max.y += Border;
 	draw(screen, r1, display->black, nil, ZP);
 	r1.max.y = r.max.y;
+	new = Dy(r) - c->nw*(Border + font->height);
+	old = Dy(c->r) - c->nw*(Border + font->height);
 	for(i=0; i<c->nw; i++){
 		w = c->w[i];
 		w->maxlines = 0;
 		if(i == c->nw-1)
 			r1.max.y = r.max.y;
-		else
-			r1.max.y = r1.min.y+(Dy(w->r)+Border)*Dy(r)/Dy(c->r);
+		else {
+			r1.max.y = r1.min.y;
+			if(new > 0 && old > 0 && Dy(w->r) > Border+font->height)
+				r1.max.y += (Dy(w->r)-Border-font->height)*new/old + Border + font->height;
+		}
+		r1.max.y = max(r1.max.y, r1.min.y + Border+font->height);
 		r2 = r1;
 		r2.max.y = r2.min.y+Border;
 		draw(screen, r2, display->black, nil, ZP);
@@ -290,7 +298,7 @@ colgrow(Column *c, Window *w, int but)
 		if(i==c->nw-1 || c->safe==FALSE)
 			r.max.y = cr.max.y;
 		else
-			r.max.y = c->w[i+1]->r.min.y;
+			r.max.y = c->w[i+1]->r.min.y - Border;
 		winresize(w, r, FALSE, TRUE);
 		return;
 	}
@@ -314,7 +322,7 @@ colgrow(Column *c, Window *w, int but)
 	ny = emalloc(c->nw * sizeof(int));
 	tot = 0;
 	for(j=0; j<c->nw; j++){
-		l = c->w[j]->taglines-1 + c->w[j]->body.maxlines;
+		l = c->w[j]->body.maxlines;
 		nl[j] = l;
 		tot += l;
 	}
@@ -323,9 +331,9 @@ colgrow(Column *c, Window *w, int but)
 		memset(nl, 0, c->nw * sizeof(int));
 		goto Pack;
 	}
-	nnl = min(onl + max(min(5, w->taglines-1+w->maxlines), onl/2), tot);
-	if(nnl < w->taglines-1+w->maxlines)
-		nnl = (w->taglines-1+w->maxlines + nnl)/2;
+	nnl = min(onl + max(min(5, w->maxlines), onl/2), tot);
+	if(nnl < w->maxlines)
+		nnl = (w->maxlines+nnl)/2;
 	if(nnl == 0)
 		nnl = 2;
 	dnl = nnl - onl;
@@ -355,10 +363,14 @@ colgrow(Column *c, Window *w, int but)
 		v = c->w[j];
 		r = v->r;
 		r.min.y = y1;
-		r.max.y = y1+Dy(v->tagtop);
+		r.max.y = y1+Dy(v->tag.all);
 		if(nl[j])
 			r.max.y += 1 + nl[j]*v->body.font->height;
-		r.min.y = winresize(v, r, c->safe, FALSE);
+		if(!c->safe || !eqrect(v->r, r)){
+			draw(screen, r, textcols[BACK], nil, ZP);
+			r.min.y = winresize(v, r, c->safe, FALSE);
+		}else
+			r.min.y = v->r.max.y;
 		r.max.y += Border;
 		draw(screen, r, display->black, nil, ZP);
 		y1 = r.max.y;
@@ -368,7 +380,7 @@ colgrow(Column *c, Window *w, int but)
 	for(j=c->nw-1; j>i; j--){
 		v = c->w[j];
 		r = v->r;
-		r.min.y = y2-Dy(v->tagtop);
+		r.min.y = y2-Dy(v->tag.all);
 		if(nl[j])
 			r.min.y -= 1 + nl[j]*v->body.font->height;
 		r.min.y -= Border;
@@ -383,6 +395,7 @@ colgrow(Column *c, Window *w, int but)
 	if(Dy(r) < Dy(w->tagtop)+1+h+Border)
 		r.max.y = r.min.y + Dy(w->tagtop)+1+h+Border;
 	/* draw window */
+	draw(screen, r, textcols[BACK], nil, ZP);
 	r.max.y = winresize(w, r, c->safe, TRUE);
 	if(i < c->nw-1){
 		r.min.y = r.max.y;
@@ -397,21 +410,18 @@ colgrow(Column *c, Window *w, int but)
 		v = c->w[j];
 		r = v->r;
 		r.min.y = y1;
-		r.max.y = y1+Dy(v->tagtop);
+		r.max.y = y1+Dy(v->tag.all);
 		if(nl[j])
 			r.max.y += 1 + nl[j]*v->body.font->height;
-		winresize(v, r, c->safe, j==c->nw-1);
+		draw(screen, r, textcols[BACK], nil, ZP);
+		y1 = winresize(v, r, c->safe, j==c->nw-1);
 		if(j < c->nw-1){	/* no border on last window */
-			r.min.y = v->r.max.y;
+			r.min.y = y1;
 			r.max.y += Border;
 			draw(screen, r, display->black, nil, ZP);
+			y1 = r.max.y;
 		}
-		y1 = r.max.y;
 	}
-	r = w->r;
-	r.min.y = y1;
-	r.max.y = c->r.max.y;
-	draw(screen, r, textcols[BACK], nil, ZP);
 	free(nl);
 	free(ny);
 	c->safe = TRUE;
@@ -477,10 +487,10 @@ coldragwin(Column *c, Window *w, int but)
 	if(i == 0)
 		return;
 	v = c->w[i-1];
-	if(p.y < v->tagtop.max.y)
-		p.y = v->tagtop.max.y;
-	if(p.y > w->r.max.y-Dy(w->tagtop)-Border)
-		p.y = w->r.max.y-Dy(w->tagtop)-Border;
+	if(p.y < v->tag.all.max.y)
+		p.y = v->tag.all.max.y;
+	if(p.y > w->r.max.y-Dy(w->tag.all)-Border)
+		p.y = w->r.max.y-Dy(w->tag.all)-Border;
 	r = v->r;
 	r.max.y = p.y;
 	if(r.max.y > v->body.r.min.y){
@@ -488,6 +498,7 @@ coldragwin(Column *c, Window *w, int but)
 		if(v->body.r.min.y == v->body.r.max.y)
 			r.max.y++;
 	}
+	draw(screen, r, textcols[BACK], nil, ZP);
 	r.min.y = winresize(v, r, c->safe, FALSE);
 	r.max.y = r.min.y+Border;
 	draw(screen, r, display->black, nil, ZP);
@@ -496,9 +507,12 @@ coldragwin(Column *c, Window *w, int but)
 		r.max.y = c->r.max.y;
 	else
 		r.max.y = c->w[i+1]->r.min.y-Border;
-	winresize(w, r, c->safe, TRUE);
+	if(!eqrect(w->r, r)){
+		draw(screen, r, textcols[BACK], nil, ZP);
+		winresize(w, r, c->safe, TRUE);
+	}
 	c->safe = TRUE;
-    	winmousebut(w);
+    winmousebut(w);
 }
 
 Text*
@@ -514,7 +528,7 @@ colwhich(Column *c, Point p)
 	for(i=0; i<c->nw; i++){
 		w = c->w[i];
 		if(ptinrect(p, w->r)){
-			if(ptinrect(p, w->tagtop) || ptinrect(p, w->tag.all))
+			if(ptinrect(p, w->tag.all))
 				return &w->tag;
 			return &w->body;
 		}

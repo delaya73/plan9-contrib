@@ -50,10 +50,12 @@ typedef struct ImageInfo {
 
 
 Rawimage**	readjpg(int, int);
-Rawimage**	Breadjpg(Biobuf *b, int);
+Rawimage**	Breadjpg(Biobuf*, int);
 Rawimage**	readpng(int, int);
-Rawimage**	Breadpng(Biobuf *b, int);
-Rawimage**	readgif(int, int);
+Rawimage**	Breadpng(Biobuf*, int);
+Rawimage**	readtif(int, int);
+Rawimage**	Breadtif(Biobuf*, int);
+Rawimage**	readgif(int, int, int);
 Rawimage**	readpixmap(int, int);
 Rawimage*	torgbv(Rawimage*, int);
 Rawimage*	totruecolor(Rawimage*, int);
@@ -71,9 +73,14 @@ void		memendgif(Biobuf*);
 Image*		onechan(Image*);
 Memimage*	memonechan(Memimage*);
 
-char*		writeppm(Biobuf*, Image*, char*);
-char*		memwriteppm(Biobuf*, Memimage*, char*);
+char*		writeppm(Biobuf*, Image*, char*, int);
+char*		memwriteppm(Biobuf*, Memimage*, char*, int);
+char*		writejpg(Biobuf*, Image*, char*, int, int);
+char*		memwritejpg(Biobuf*, Memimage*, char*, int, int);
 Image*		multichan(Image*);
 Memimage*	memmultichan(Memimage*);
 
 char*		memwritepng(Biobuf*, Memimage*, ImageInfo*);
+
+char*		writetif(Biobuf*, Image*, char*, int, int);
+char*		memwritetif(Biobuf*, Memimage*, char*, int, int);

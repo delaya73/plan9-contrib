@@ -7,7 +7,7 @@
 
 // A stack for holding integer values
 enum {
-	Nestmax = 40	// max nesting level of lists, font styles, etc.
+	Nestmax = 256	// max nesting level of lists, font styles, etc.
 };
 
 struct Stack {
@@ -54,6 +54,7 @@ struct ItemSource
 	int			ntables;
 	int			nanchors;
 	int			nframes;
+	Formfield*	curfield;
 	Form*		curform;
 	Map*		curmap;
 	Table*		tabstk;
@@ -274,7 +275,7 @@ static Anchor*		newanchor(int index, Rune* name, Rune* href, int target, Anchor*
 static Area*		newarea(int shape, Rune* href, int target, Area* link);
 static DestAnchor*	newdestanchor(int index, Rune* name, Item* item, DestAnchor* link);
 static Docinfo*		newdocinfo(void);
-static Genattr*		newgenattr(Rune* id, Rune* class, Rune* style, Rune* title, Attr* events);
+static Genattr*		newgenattr(Rune* id, Rune* class, Rune* style, Rune* title, SEvent* events);
 static Form*		newform(int formid, Rune* name, Rune* action,
 					int target, int method, Form* link);
 static Formfield*	newformfield(int ftype, int fieldid, Form* form, Rune* name,
@@ -358,11 +359,68 @@ newitemsource(Docinfo* di)
 	is->ntables = 0;
 	is->nanchors = 0;
 	is->nframes = 0;
+	is->curfield = nil;
 	is->curform = nil;
 	is->curmap = nil;
 	is->tabstk = nil;
 	is->kidstk = nil;
 	return is;
+}
+
+static void
+linkitems(Docinfo *di, Item *it)
+{
+	Formfield *ff;
+	Tablecell *c;
+	Table *tt;
+
+	while(it != nil){
+		switch(it->tag) {
+		case Iimagetag:
+			/* link image to docinfo */
+			((Iimage*)it)->nextimage = di->images;
+			di->images = (Iimage*)it;
+			break;
+		case Iformfieldtag:
+			/* link formfield to form */
+			ff = ((Iformfield*)it)->formfield;
+			if(ff != nil && ff->form != nil){
+				for(ff = ff->form->fields; ff != nil; ff = ff->next){
+					if(ff == ((Iformfield*)it)->formfield)
+						goto Next;
+					if(ff->next == nil)
+						break;
+				}
+				((Iformfield*)it)->formfield->next = nil;
+				if(ff != nil){
+					ff->next = ((Iformfield*)it)->formfield;
+					ff = ff->next;
+				} else {
+					ff = ((Iformfield*)it)->formfield;
+					ff->form->fields = ff;
+				}
+				linkitems(di, ff->image);
+			}
+			break;
+		case Itabletag:
+			/* link table to docinfo */
+			tt = ((Itable*)it)->table;
+			if(tt == nil)
+				break;
+			tt->tabletok = nil;
+			tt->next = di->tables;
+			di->tables = tt;
+			linkitems(di, tt->caption);
+			for(c = tt->cells; c != nil; c = c->next)
+				linkitems(di, c->content);
+			break;
+		case Ifloattag:
+			linkitems(di, ((Ifloat*)it)->item);
+			break;
+		}
+	Next:
+		it = it->next;
+	}
 }
 
 static Item *getitems(ItemSource* is, uchar* data, int datalen);
@@ -453,7 +511,6 @@ getitems(ItemSource* is, uchar* data, int datalen)
 	Rune*	script;
 	Map*	map;
 	Form*	frm;
-	Iimage*	ii;
 	Kidinfo*	kd;
 	Kidinfo*	ks;
 	Kidinfo*	pks;
@@ -694,12 +751,8 @@ getitems(ItemSource* is, uchar* data, int datalen)
 				bgurl = aurlval(tok, Abackground, nil, di->base);
 				if(bgurl != nil) {
 					if(di->backgrounditem != nil)
-						freeitem((Item*)di->backgrounditem);
-						// really should remove old item from di->images list,
-						// but there should only be one BODY element ...
+						freeitem(di->backgrounditem);
 					di->backgrounditem = (Iimage*)newiimage(bgurl, nil, ALnone, 0, 0, 0, 0, 0, 0, nil);
-					di->backgrounditem->nextimage = di->images;
-					di->images = di->backgrounditem;
 				}
 				ps->curbg = bg;
 				di->background = bg;
@@ -747,8 +800,11 @@ getitems(ItemSource* is, uchar* data, int datalen)
 						fprint(2, "warning: unexpected </CAPTION>\n");
 					continue;
 				}
+				if(curtab->caption != nil)
+					freeitems(curtab->caption);
 				curtab->caption = ps->items->next;
-				free(ps);
+				ps->items->next = nil;
+				freepstate(ps);
 				ps = nextps;
 				break;
 
@@ -893,8 +949,6 @@ getitems(ItemSource* is, uchar* data, int datalen)
 						fprint(2, "warning: unexpected </FORM>\n");
 					continue;
 				}
-				// put fields back in input order
-				is->curform->fields = (Formfield*)_revlist((List*)is->curform->fields);
 				is->curform = nil;
 				break;
 
@@ -1083,10 +1137,6 @@ getitems(ItemSource* is, uchar* data, int datalen)
 					ps->skipwhite = 0;
 					additem(ps, img, tok);
 				}
-				if(!ps->skipping) {
-					((Iimage*)img)->nextimage = di->images;
-					di->images = (Iimage*)img;
-				}
 				ps->curanchor = oldcuranchor;
 				break;
 
@@ -1098,7 +1148,7 @@ getitems(ItemSource* is, uchar* data, int datalen)
 						fprint(2, "<INPUT> not inside <FORM>\n");
 					continue;
 				}
-				is->curform->fields = field = newformfield(
+				field = newformfield(
 						atabval(tok, Atype, input_tab, NINPUTTAB, Ftext),
 						++is->curform->nfields,
 						is->curform,
@@ -1106,7 +1156,7 @@ getitems(ItemSource* is, uchar* data, int datalen)
 						aval(tok, Avalue),
 						auintval(tok, Asize, 0),
 						auintval(tok, Amaxlength, 1000),
-						is->curform->fields);
+						nil);
 				if(aflagval(tok, Achecked))
 					field->flags = FFchecked;
 
@@ -1158,9 +1208,6 @@ getitems(ItemSource* is, uchar* data, int datalen)
 						atabval(tok, Aalign, align_tab, NALIGNTAB, ALbottom),
 						auintval(tok, Awidth, 0), auintval(tok, Aheight, 0),
 						0, 0, 0, 0, nil);
-					ii = (Iimage*)field->image;
-					ii->nextimage = di->images;
-					di->images = ii;
 					break;
 
 				case Freset:
@@ -1187,21 +1234,19 @@ getitems(ItemSource* is, uchar* data, int datalen)
 				additem(ps, textit(ps, prompt), tok);
 				frm = newform(++is->nforms,
 						nil,
-						di->base,
+						_Strdup(di->base),
 						target,
 						HGet,
 						di->forms);
 				di->forms = frm;
 				ff = newformfield(Ftext,
-						1,
+						++frm->nfields,
 						frm,
 						_Strdup(L"_ISINDEX_"),
 						nil,
 						50,
 						1000,
 						nil);
-				frm->fields = ff;
-				frm->nfields = 1;
 				additem(ps, newiformfield(ff), tok);
 				addbrk(ps, 1, 0);
 				break;
@@ -1398,15 +1443,14 @@ getitems(ItemSource* is, uchar* data, int datalen)
 						fprint(2, "<SELECT> not inside <FORM>\n");
 					continue;
 				}
-				field = newformfield(Fselect,
+				is->curfield = field = newformfield(Fselect,
 					++is->curform->nfields,
 					is->curform,
 					aval(tok, Aname),
 					nil,
 					auintval(tok, Asize, 0),
 					0,
-					is->curform->fields);
-				is->curform->fields = field;
+					nil);
 				if(aflagval(tok, Amultiple))
 					field->flags = FFmultiple;
 				ffit = newiformfield(field);
@@ -1420,16 +1464,17 @@ getitems(ItemSource* is, uchar* data, int datalen)
 				break;
 
 			case Tselect+RBRA:
-				if(is->curform == nil || is->curform->fields == nil) {
+				if(is->curform == nil || is->curfield == nil) {
 					if(warn)
 						fprint(2, "warning: unexpected </SELECT>\n");
 					continue;
 				}
-				field = is->curform->fields;
+				field = is->curfield;
 				if(field->ftype != Fselect)
 					continue;
 				// put options back in input order
 				field->options = (Option*)_revlist((List*)field->options);
+				is->curfield = nil;
 				break;
 
 			// <!ELEMENT (STRIKE|U) - - (%text)*>
@@ -1544,8 +1589,6 @@ getitems(ItemSource* is, uchar* data, int datalen)
 				}
 				else
 					is->tabstk = is->tabstk->next;
-				curtab->next = di->tables;
-				di->tables = curtab;
 				curtab = is->tabstk;
 				if(!isempty)
 					addbrk(ps, 0, 0);
@@ -1640,8 +1683,7 @@ getitems(ItemSource* is, uchar* data, int datalen)
 					nil,
 					0,
 					0,
-					is->curform->fields);
-				is->curform->fields = field;
+					nil);
 				field->rows = auintval(tok, Arows, 3);
 				field->cols = auintval(tok, Acols, 50);
 				field->value = getpcdata(toks, tokslen, &toki);
@@ -1694,6 +1736,7 @@ getitems(ItemSource* is, uchar* data, int datalen)
 						fprint(2, "warning: empty row\n");
 					curtab->rows = tr->next;
 					tr->next = nil;
+					free(tr);
 				}
 				else
 					tr->flags = 0;
@@ -1793,8 +1836,6 @@ getitems(ItemSource* is, uchar* data, int datalen)
 		}
 		if(is->tabstk != nil)
 			is->tabstk = is->tabstk->next;
-		curtab->next = di->tables;
-		di->tables = curtab;
 		curtab = is->tabstk;
 	}
 	outerps = lastps(ps);
@@ -1803,6 +1844,7 @@ getitems(ItemSource* is, uchar* data, int datalen)
 	// note: ans may be nil and di->kids not nil, if there's a frameset!
 	outerps->items = newispacer(ISPnull);
 	outerps->lastit = outerps->items;
+	outerps->prelastit = nil;
 	is->psstk = ps;
 	if(ans != nil && di->hasscripts) {
 		// TODO evalscript(nil);
@@ -1817,6 +1859,8 @@ return_ans:
 		else
 			printitems(ans, "getitems returning:");
 	}
+	linkitems(di, ans);
+	_freetokens(toks, tokslen);
 	return ans;
 }
 
@@ -1892,7 +1936,10 @@ finishcell(Table* curtab, Pstate* psstk)
 					fprint(2, "warning: parse state stack is wrong\n");
 			}
 			else {
+				if(c->content != nil)
+					freeitems(c->content);
 				c->content = psstk->items->next;
+				psstk->items->next = nil;
 				c->flags &= ~TFparsing;
 				freepstate(psstk);
 				psstk = psstknext;
@@ -1977,6 +2024,7 @@ additem(Pstate* ps, Item* it, Token* tok)
 	if(ps->skipping) {
 		if(warn)
 			fprint(2, "warning: skipping item: %I\n", it);
+		freeitem(it);
 		return;
 	}
 	it->anchorid = ps->curanchor;
@@ -2213,6 +2261,7 @@ addbrk(Pstate* ps, int sp, int clr)
 			// try to avoid making empty items
 			// but not crucial f the occasional one gets through
 			if(nl == 0 && ps->prelastit != nil) {
+				freeitems(ps->lastit);
 				ps->lastit = ps->prelastit;
 				ps->lastit->next = nil;
 				ps->prelastit = nil;
@@ -2474,6 +2523,7 @@ finish_table(Table* t)
 		// copy the data from the allocated Tablerow into the array slot
 		t->rows[r] = *row;
 		rownext = row->next;
+		free(row);
 		row = &t->rows[r];
 		r--;
 		rcols = 0;
@@ -2482,7 +2532,7 @@ finish_table(Table* t)
 		// If rowspan is > 1 but this is the last row,
 		// reset the rowspan
 		if(c != nil && c->rowspan > 1 && r == nrow-2)
-				c->rowspan = 1;
+			c->rowspan = 1;
 
 		// reverse row->cells list (along nextinrow pointers)
 		row->cells = nil;
@@ -3220,6 +3270,7 @@ freeitem(Item* it)
 		free(ga->style);
 		free(ga->title);
 		freescriptevents(ga->events);
+		free(ga);
 	}
 	free(it);
 }
@@ -3250,6 +3301,7 @@ freeformfield(Formfield* ff)
 
 	free(ff->name);
 	free(ff->value);
+	freeitem(ff->image);
 	for(o = ff->options; o != nil; o = onext) {
 		onext = o->next;
 		free(o->value);
@@ -3273,6 +3325,7 @@ freetable(Table* t)
 	for(c = t->cells; c != nil; c = cnext) {
 		cnext = c->next;
 		freeitems(c->content);
+		free(c);
 	}
 	if(t->grid != nil) {
 		for(i = 0; i < t->nrow; i++)
@@ -3428,7 +3481,8 @@ freedocinfo(Docinfo* d)
 		return;
 	free(d->src);
 	free(d->base);
-	freeitem((Item*)d->backgrounditem);
+	free(d->doctitle);
+	freeitem(d->backgrounditem);
 	free(d->refresh);
 	freekidinfos(d->kidinfo);
 	freeanchors(d->anchors);
@@ -3440,11 +3494,10 @@ freedocinfo(Docinfo* d)
 	free(d);
 }
 
-// Currently, someone else owns all the memory
-// pointed to by things in a Pstate.
 static void
 freepstate(Pstate* p)
 {
+	freeitems(p->items);
 	free(p);
 }
 
@@ -3456,7 +3509,7 @@ freepstatestack(Pstate* pshead)
 
 	for(p = pshead; p != nil; p = pnext) {
 		pnext = p->next;
-		free(p);
+		freepstate(p);
 	}
 }
 
@@ -3717,7 +3770,6 @@ newtable(int tableid, Align align, Dimen width, int border,
 	t->caption_place = ALbottom;
 	t->caption_lay = nil;
 	t->tabletok = tok;
-	t->tabletok = nil;
 	t->next = link;
 	return t;
 }

@@ -71,7 +71,7 @@ struct	Field
 	int	end2;
 
 	long	flags;
-	uchar	mapto[1+255];
+	uchar	mapto[256];
 
 	void	(*dokey)(Key*, uchar*, uchar*, Field*);
 };
@@ -95,6 +95,7 @@ struct args
 	long	mline;			/* max lines per file */
 } args;
 
+extern	int	latinmap[];
 extern	Rune*	month[12];
 
 void	buildkey(Line*);
@@ -107,6 +108,8 @@ void	dokey_gn(Key*, uchar*, uchar*, Field*);
 void	dokey_m(Key*, uchar*, uchar*, Field*);
 void	dokey_r(Key*, uchar*, uchar*, Field*);
 void	done(char*);
+void*	emalloc(ulong);
+void*	erealloc(void*, ulong);
 int	kcmp(Key*, Key*);
 void	makemapd(Field*);
 void	makemapm(Field*);
@@ -114,7 +117,6 @@ void	mergefiles(int, int, Biobuf*);
 void	mergeout(Biobuf*);
 void	newfield(void);
 Line*	newline(Biobuf*);
-void	nomem(void);
 void	notifyf(void*, char*);
 void	printargs(void);
 void	printout(Biobuf*);
@@ -138,8 +140,7 @@ main(int argc, char *argv[])
 		printargs();
 
 	for(i=1; i<argc; i++) {
-		s = argv[i];
-		if(s == 0)
+		if((s = argv[i]) == nil)
 			continue;
 		if(strcmp(s, "-") == 0) {
 			Binit(&bbuf, 0, OREAD);
@@ -163,7 +164,7 @@ main(int argc, char *argv[])
 		Bterm(&bbuf);
 	}
 	if(args.cflag)
-		done(0);
+		done(nil);
 	if(args.vflag)
 		fprint(2, "=========\n");
 
@@ -184,7 +185,7 @@ main(int argc, char *argv[])
 		printout(&bbuf);
 	}
 	Bterm(&bbuf);
-	done(0);
+	done(nil);
 }
 
 void
@@ -194,12 +195,10 @@ dofile(Biobuf *b)
 	int n;
 
 	if(args.cflag) {
-		ol = newline(b);
-		if(ol == 0)
+		if((ol = newline(b)) == nil)
 			return;
 		for(;;) {
-			l = newline(b);
-			if(l == 0)
+			if((l = newline(b)) == nil)
 				break;
 			n = kcmp(ol->key, l->key);
 			if(n > 0 || (n == 0 && args.uflag)) {
@@ -210,17 +209,15 @@ dofile(Biobuf *b)
 			free(ol);
 			ol = l;
 		}
+		free(ol->key);
+		free(ol);
 		return;
 	}
 
-	if(args.linep == 0) {
-		args.linep = malloc(args.mline * sizeof(args.linep));
-		if(args.linep == 0)
-			nomem();
-	}
+	if(args.linep == nil)
+		args.linep = emalloc(args.mline * sizeof(args.linep));
 	for(;;) {
-		l = newline(b);
-		if(l == 0)
+		if((l = newline(b)) == nil)
 			break;
 		if(args.nline >= args.mline)
 			tempout();
@@ -235,13 +232,13 @@ notifyf(void*, char *s)
 {
 
 	if(strcmp(s, "interrupt") == 0)
-		done(0);
+		done(nil);
 	if(strcmp(s, "hangup") == 0)
-		done(0);
+		done(nil);
 	if(strcmp(s, "kill") == 0)
-		done(0);
+		done(nil);
 	if(strncmp(s, "sys: write on closed pipe", 25) == 0)
-		done(0);
+		done(nil);
 	fprint(2, "sort: note: %s\n", s);
 	abort();
 }
@@ -255,22 +252,21 @@ newline(Biobuf *b)
 
 	p = Brdline(b, '\n');
 	n = Blinelen(b);
-	if(p == 0) {
+	if(p == nil) {
 		if(n == 0)
 			return 0;
-		l = 0;
+		l = nil;
 		for(n=0;;) {
-			if((n & 31) == 0) {
-				l = realloc(l, sizeof(Line) +
+			if((n & 31) == 0)
+				l = erealloc(l, sizeof(Line) +
 					(n+31)*sizeof(l->line[0]));
-				if(l == 0)
-					nomem();
-			}
 			c = Bgetc(b);
 			if(c < 0) {
 				fprint(2, "sort: newline added\n");
 				c = '\n';
 			}
+			if(l == nil)
+				sysfatal("bug: l == nil");
 			l->line[n++] = c;
 			if(c == '\n')
 				break;
@@ -279,10 +275,7 @@ newline(Biobuf *b)
 		buildkey(l);
 		return l;
 	}
-	l = malloc(sizeof(Line) +
-		(n-1)*sizeof(l->line[0]));
-	if(l == 0)
-		nomem();
+	l = emalloc(sizeof(Line) + (n-1)*sizeof(l->line[0]));
 	l->llen = n;
 	memmove(l->line, p, n);
 	buildkey(l);
@@ -341,11 +334,29 @@ done(char *xs)
 	exits(xs);
 }
 
-void
-nomem(void)
+void*
+erealloc(void *v, ulong n)
 {
-	fprint(2, "sort: out of memory\n");
-	done("mem");
+	if((v = realloc(v, n)) == nil && n != 0){
+		fprint(2, "realloc: %r\n");
+		done("realloc");
+	}
+
+	return v;
+}
+
+void*
+emalloc(ulong n)
+{
+	void *v;
+
+	if((v = malloc(n)) == nil){
+		fprint(2, "malloc: %r\n");
+		done("malloc");
+	}
+	memset(v, 0, n);
+
+	return v;
 }
 
 char*
@@ -372,7 +383,7 @@ tempfile(int n)
 		}
 	}
 
-	sprint(file, "%s/sort.%.4d.%.4d", dir, pid%10000, n);
+	snprint(file, sizeof(file), "%s/sort.%.4d.%.4d", dir, pid%10000, n);
 	return file;
 }
 
@@ -414,10 +425,8 @@ mergefiles(int t, int n, Biobuf *b)
 	char *tf;
 	int i, f, nn;
 
-	mmp = malloc(n*sizeof(*mmp));
-	mp = malloc(n*sizeof(*mp));
-	if(mmp == 0 || mp == 0)
-		nomem();
+	mmp = emalloc(n*sizeof(*mmp));
+	mp = emalloc(n*sizeof(*mp));
 
 	nn = 0;
 	m = mp;
@@ -432,8 +441,7 @@ mergefiles(int t, int n, Biobuf *b)
 		Binit(&m->b, f, OREAD);
 		mmp[nn] = m;
 
-		l = newline(&m->b);
-		if(l == 0)
+		if((l = newline(&m->b)) == nil)
 			continue;
 		nn++;
 		m->line = l;
@@ -460,7 +468,7 @@ mergefiles(int t, int n, Biobuf *b)
 			}
 
 			l = newline(&m->b);
-			if(l == 0) {
+			if(l == nil) {
 				nn--;
 				mmp[0] = mmp[nn];
 				break;
@@ -740,7 +748,7 @@ doargs(int argc, char *argv[])
 				s = strchr(s, 0);
 				break;
 			case 'k':	/* posix key (what were they thinking?) */
-				p = 0;
+				p = nil;
 				if(*s == 0) {
 					i++;
 					if(i < argc) {
@@ -750,12 +758,12 @@ doargs(int argc, char *argv[])
 				} else
 					p = s;
 				s = strchr(s, 0);
-				if(p == 0)
+				if(p == nil)
 					break;
 
 				newfield();
 				q = strchr(p, ',');
-				if(q)
+				if(q != nil)
 					*q++ = 0;
 				f = &args.field[args.nfield];
 				dofield(p, &f->beg1, &f->beg2, 1, 1);
@@ -763,7 +771,7 @@ doargs(int argc, char *argv[])
 					f->flags |= B1flag;
 					f->flags &= ~Bflag;
 				}
-				if(q) {
+				if(q != nil) {
 					dofield(q, &f->end1, &f->end2, 1, 0);
 					if(f->end2 <= 0)
 						f->end1++;
@@ -935,13 +943,14 @@ doargs(int argc, char *argv[])
 uchar*
 skip(uchar *l, int n1, int n2, int bflag, int endfield)
 {
-	int i, c, tc;
+	int i, c, ln, tc;
 	Rune r;
 
 	if(endfield && n1 < 0)
 		return 0;
 
 	c = *l++;
+	ln = 1;
 	tc = args.tabchar;
 	if(tc) {
 		if(tc < Runeself) {
@@ -956,15 +965,15 @@ skip(uchar *l, int n1, int n2, int bflag, int endfield)
 			}
 		} else {
 			l--;
-			l += chartorune(&r, (char*)l);
+			l += ln = chartorune(&r, (char*)l);
 			for(i=n1; i>0; i--) {
 				while(r != tc) {
 					if(r == '\n')
 						return 0;
-					l += chartorune(&r, (char*)l);
+					l += ln = chartorune(&r, (char*)l);
 				}
 				if(!(endfield && i == 1))
-					l += chartorune(&r, (char*)l);
+					l += ln = chartorune(&r, (char*)l);
 			}
 			c = r;
 		}
@@ -981,10 +990,12 @@ skip(uchar *l, int n1, int n2, int bflag, int endfield)
 	}
 
 	if(bflag)
-		while(c == ' ' || c == '\t')
+		while(c == ' ' || c == '\t'){
 			c = *l++;
+			ln = 1;
+		}
 
-	l--;
+	l -= ln;
 	for(i=n2; i>0; i--) {
 		c = *l;
 		if(c < Runeself) {
@@ -1292,26 +1303,15 @@ dokey_dfi(Key *k, uchar *lp, uchar *lpe, Field *f)
 		/*
 		 * for characters out of range,
 		 * the table does not do Rflag.
-		 * ignore is based on mapto[nelem(f->mapto)-1]
+		 * ignore is based on mapto[255]
 		 */
 		if(c != 0 && c < nelem(f->mapto)) {
 			c = f->mapto[c];
 			if(c == 0)
 				continue;
-		} else {
+		} else
 			if(f->mapto[nelem(f->mapto)-1] == 0)
 				continue;
-			/*
-			 * consider building maps as necessary
-			 */
-			if(f->flags & Fflag)
-				c = tolowerrune(tobaserune(c));
-			if(f->flags & Dflag && !isalpharune(c) &&
-			    !isdigitrune(c) && !isspacerune(c))
-				continue;
-			if((f->flags & Wflag) && isspacerune(c))
-				continue;
-		}
 
 		/*
 		 * put it in the key
@@ -1398,21 +1398,17 @@ buildkey(Line *l)
 
 	for(i=1; i<=args.nfield; i++) {
 		f = &args.field[i];
-		lp = skip(l->line, f->beg1, f->beg2, f->flags&B1flag, 0);
-		if(lp == 0)
+		if((lp = skip(l->line, f->beg1, f->beg2, f->flags&B1flag, 0)) == nil)
 			lp = l->line + ll;
-		lpe = skip(l->line, f->end1, f->end2, f->flags&Bflag, 1);
-		if(lpe == 0)
+		if((lpe = skip(l->line, f->end1, f->end2, f->flags&Bflag, 1)) == nil)
 			lpe = l->line + ll;
 		n = (lpe - lp) + 1;
 		if(n <= 0)
 			n = 1;
 		if(cl+(n+4) > kl) {
 			kl = cl+(n+4);
-			k = realloc(k, sizeof(Key) +
+			k = erealloc(k, sizeof(Key) +
 				(kl-1)*sizeof(k->key[0]));
-			if(k == 0)
-				nomem();
 		}
 		k->klen = cl;
 		(*f->dokey)(k, lp, lpe, f);
@@ -1426,10 +1422,8 @@ buildkey(Line *l)
 		f = &args.field[0];
 		if(cl+(ll+4) > kl) {
 			kl = cl+(ll+4);
-			k = realloc(k, sizeof(Key) +
+			k = erealloc(k, sizeof(Key) +
 				(kl-1)*sizeof(k->key[0]));
-			if(k == 0)
-				nomem();
 		}
 		k->klen = cl;
 		(*f->dokey)(k, l->line, l->line+ll, f);
@@ -1477,7 +1471,7 @@ makemapm(Field *f)
 void
 makemapd(Field *f)
 {
-	int i, c;
+	int i, j, c;
 
 	for(i=0; i<nelem(f->mapto); i++) {
 		c = i;
@@ -1491,12 +1485,24 @@ makemapd(Field *f)
 			if(!(c == ' ' || c == '\t' ||
 			    (c >= 'a' && c <= 'z') ||
 			    (c >= 'A' && c <= 'Z') ||
-			    (c >= '0' && c <= '9'))){
-				if(!isupperrune(c = toupperrune(c)))
+			    (c >= '0' && c <= '9'))) {
+				for(j=0; latinmap[j]; j+=3)
+					if(c == latinmap[j+0] ||
+					   c == latinmap[j+1])
+						break;
+				if(latinmap[j] == 0)
 					c = -1;
 			}
-		if((f->flags & Fflag) && c >= 0)
-			c = toupperrune(tobaserune(c));
+		if((f->flags & Fflag) && c >= 0) {
+			if(c >= 'a' && c <= 'z')
+				c += 'A' - 'a';
+			for(j=0; latinmap[j]; j+=3)
+				if(c == latinmap[j+0] ||
+				   c == latinmap[j+1]) {
+					c = latinmap[j+2];
+					break;
+				}
+		}
 		if((f->flags & Rflag) && c >= 0 && i > 0 && i < Runeself)
 			c = ~c & 0xff;
 		if(c < 0)
@@ -1511,6 +1517,41 @@ makemapd(Field *f)
 		}
 	}
 }
+
+int	latinmap[] =
+{
+/*	lcase	ucase	fold	*/
+	L'à',	L'À',	L'A',	
+	L'á',	L'Á',	L'A',	
+	L'â',	L'Â',	L'A',	
+	L'ä',	L'Ä',	L'A',	
+	L'ã',	L'Ã',	L'A',	
+	L'å',	L'Å',	L'A',	
+	L'è',	L'È',	L'E',	
+	L'é',	L'É',	L'E',	
+	L'ê',	L'Ê',	L'E',	
+	L'ë',	L'Ë',	L'E',	
+	L'ì',	L'Ì',	L'I',	
+	L'í',	L'Í',	L'I',	
+	L'î',	L'Î',	L'I',	
+	L'ï',	L'Ï',	L'I',	
+	L'ò',	L'Ò',	L'O',	
+	L'ó',	L'Ó',	L'O',	
+	L'ô',	L'Ô',	L'O',	
+	L'ö',	L'Ö',	L'O',	
+	L'õ',	L'Õ',	L'O',	
+	L'ø',	L'Ø',	L'O',	
+	L'ù',	L'Ù',	L'U',	
+	L'ú',	L'Ú',	L'U',	
+	L'û',	L'Û',	L'U',	
+	L'ü',	L'Ü',	L'U',	
+	L'æ',	L'Æ',	L'A',	
+	L'ð',	L'Ð',	L'D',	
+	L'ñ',	L'Ñ',	L'N',	
+	L'ý',	L'Ý',	L'Y',	
+	L'ç',	L'Ç',	L'C',	
+	0,
+};
 
 Rune*	month[12] =
 {

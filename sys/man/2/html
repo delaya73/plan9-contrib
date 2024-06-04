@@ -457,7 +457,6 @@ struct Ifloat
 	int	y;
 	uchar	side;
 	uchar	infloats;
-	Ifloat*	nextfloat;
 };
 .EE
 .PP
@@ -477,8 +476,6 @@ are reserved for use by the caller; these are typically used for the coordinates
 of the top of the float.
 .B Infloats
 is used by the caller to keep track of whether it has placed the float.
-.B Nextfloat
-is used by the caller to link together all of the floats that it has placed.
 .PP
 For items of type
 .BR Ispacertag ,

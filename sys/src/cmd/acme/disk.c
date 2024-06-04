@@ -19,7 +19,7 @@ tempfile(void)
 	char buf[128];
 	int i, fd;
 
-	snprint(buf, sizeof buf, "/tmp/X%d.%.4sacme", getpid(), getuser());
+	snprint(buf, sizeof buf, "/tmp/X%d.%.4sacme", getpid(), user);
 	for(i='A'; i<='Z'; i++){
 		buf[5] = i;
 		if(access(buf, AEXIST) == 0)
@@ -82,6 +82,9 @@ disknewblock(Disk *d, uint n)
 		b = blist;
 		blist = b->next;
 		b->addr = d->addr;
+		if(d->addr+size < d->addr){
+			error("temp file overflow");
+		}
 		d->addr += size;
 	}
 	b->n = n;
@@ -132,7 +135,7 @@ diskread(Disk *d, Block *b, Rune *r, uint n)
 	for(tot = 0; tot < n; tot += nr){
 		nr = pread(d->fd, p+tot, n-tot, b->addr+tot);
 		if(nr <= 0)
-			break;		/* tot < n, so error */
+			error("read error from temp file");
 	}
 	if(tot != n)
 		error("read error from temp file");

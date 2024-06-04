@@ -12,7 +12,6 @@ struct Entry{
 	int		exten;
 };
 
-
 struct Header{
 	Biobuf	*fd;
 	char		err[256];
@@ -40,13 +39,13 @@ static char		readerr[] = "ReadGIF: read error: %r";
 static char		extreaderr[] = "ReadGIF: can't read extension: %r";
 static char		memerr[] = "ReadGIF: malloc failed: %r";
 
-static Rawimage**	readarray(Header*);
+static Rawimage**	readarray(Header*, int);
 static Rawimage*	readone(Header*);
 static void			readheader(Header*);
 static void			skipextension(Header*);
 static uchar*		readcmap(Header*, int);
 static uchar*		decode(Header*, Rawimage*, Entry*);
-static void			interlace(Header*, Rawimage*);
+static void		interlace(Header*, Rawimage*);
 
 static
 void
@@ -94,14 +93,14 @@ giferror(Header *h, char *fmt, ...)
 	vseprint(h->err, h->err+sizeof h->err, fmt, arg);
 	va_end(arg);
 
-	werrstr(h->err);
+	werrstr("%s", h->err);
 	giffreeall(h, 1);
 	longjmp(h->errlab, 1);
 }
 
 
 Rawimage**
-readgif(int fd, int colorspace)
+readgif(int fd, int colorspace, int justone)
 {
 	Rawimage **a;
 	Biobuf b;
@@ -123,7 +122,7 @@ readgif(int fd, int colorspace)
 	if(setjmp(h->errlab))
 		a = nil;
 	else
-		a = readarray(h);
+		a = readarray(h, justone);
 	giffreeall(h, 0);
 	free(h);
 	return a;
@@ -145,7 +144,7 @@ inittbl(Header *h)
 
 static
 Rawimage**
-readarray(Header *h)
+readarray(Header *h, int justone)
 {
 	Entry *tbl;
 	Rawimage *new, **array;
@@ -157,8 +156,7 @@ readarray(Header *h)
 
 	if(h->fields & 0x80)
 		h->globalcmap = readcmap(h, (h->fields&7)+1);
-
-	array = malloc(sizeof(Rawimage**));
+	array = malloc(sizeof(Rawimage*));
 	if(array == nil)
 		giferror(h, memerr);
 	nimages = 0;
@@ -181,8 +179,12 @@ readarray(Header *h)
 				new->cmaplen = 3*(1<<((new->fields&7)+1));
 				new->cmap = readcmap(h, (new->fields&7)+1);
 			}else{
+				if(h->globalcmap == nil)
+					giferror(h, "ReadGIF: globalcmap missing");
 				new->cmaplen = 3*(1<<((h->fields&7)+1));
 				new->cmap = malloc(new->cmaplen);
+				if(new->cmap == nil)
+					giferror(h, memerr);
 				memmove(new->cmap, h->globalcmap, new->cmaplen);
 			}
 			h->new = new;
@@ -200,6 +202,8 @@ readarray(Header *h)
 			array[nimages] = nil;
 			h->array = array;
 			h->new = nil;
+			if(justone)
+				goto Return;
 			break;
 
 		case 0x3B:	/* Trailer */
@@ -374,7 +378,7 @@ static
 uchar*
 decode(Header *h, Rawimage *i, Entry *tbl)
 {
-	int c, doclip, incode, codesize, CTM, EOD, pici, datai, stacki, nbits, sreg, fc, code, piclen;
+	int c, incode, codesize, CTM, EOD, pici, datai, stacki, nbits, sreg, fc, code, piclen;
 	int csize, nentry, maxentry, first, ocode, ndata, nb;
 	uchar clip, *p, *pic;
 	uchar stack[4096], data[256];
@@ -384,10 +388,6 @@ decode(Header *h, Rawimage *i, Entry *tbl)
 	codesize = h->buf[0];
 	if(codesize>8 || 0>codesize)
 		giferror(h, "ReadGIF: can't handle codesize %d", codesize);
-	doclip = 0;
-	if(i->cmap!=nil && i->cmaplen!=3*(1<<codesize)
-	  && (codesize!=2 || i->cmaplen!=3*2))			/* peculiar GIF bitmap files... */
-		doclip = 1;
 
 	CTM =1<<codesize;
 	EOD = CTM+1;
@@ -488,10 +488,10 @@ decode(Header *h, Rawimage *i, Entry *tbl)
 	}
 
 Return:
-	if(doclip){
-		clip = i->cmaplen/3;
+	if(i->cmap!=nil && i->cmaplen!=3*256){
+		clip = (i->cmaplen/3)-1;
 		for(p = pic; p < pic+piclen; p++)
-			if(*p >= clip)
+			if(*p > clip)
 				*p = clip;
 	}
 	h->pic = nil;

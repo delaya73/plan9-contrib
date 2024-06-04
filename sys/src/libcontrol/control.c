@@ -342,12 +342,9 @@ _ctlrunestr(char *s)
 char*
 _ctlstrrune(Rune *r)
 {
-	int nb;
 	char *s;
-
-	nb = runestrlen(r)*UTFmax+1;
-	s = ctlmalloc(nb);
-	snprint(s, nb, "%S", r);
+	s = ctlmalloc(runestrlen(r)*UTFmax+1);
+	sprint(s, "%S", r);
 	return s;
 }
 
@@ -419,9 +416,9 @@ ctlparse(CParse *cp, char *s, int hasreceiver)
 		cp->receiver = nil;
 	for(i=0; i<cp->nargs; i++){
 		t = cp->args[i];
-		while(*t == '[')	/* %R gives [0 0] [1 1]; atoi will stop at closing ] */
+		while(*t == '[')	/* %R gives [0 0] [1 1]; strtol will stop at closing ] */
 			t++;
-		cp->iargs[i] = atoi(t);
+		cp->iargs[i] = strtol(t, 0, 0);
 	}
 	return cp->nargs;
 }

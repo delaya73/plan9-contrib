@@ -271,13 +271,6 @@ rowtype(Row *row, Rune r, Point p)
 		else{
 			winlock(w, 'K');
 			wintype(w, t, r);
-			/* Expand tag if necessary */
-			if(t->what == Tag){
-				t->w->tagsafe = FALSE;
-				if(r == '\n')
-					t->w->tagexpand = TRUE;
-				winresize(w, w->r, TRUE, TRUE);
-			}
 			winunlock(w);
 		}
 	}
@@ -300,7 +293,7 @@ rowclean(Row *row)
 void
 rowdump(Row *row, char *file)
 {
-	int i, j, fd, m, n, dumped;
+	int i, j, fd, m, n, start, dumped;
 	uint q0, q1;
 	Biobuf *b;
 	char *buf, *a, *fontname;
@@ -403,10 +396,17 @@ rowdump(Row *row, char *file)
 			m = min(RBUFSIZE, w->tag.file->nc);
 			bufread(w->tag.file, 0, r, m);
 			n = 0;
-			while(n<m && r[n]!='\n')
-				n++;
-			r[n++] = '\n';
-			Bprint(b, "%.*S", n, r);
+			while(n<m) {
+				start = n;
+				while(n<m && r[n]!='\n')
+					n++;
+				Bprint(b, "%.*S", n-start, r+start);
+				if(n<m) {
+					Bputc(b, 0xff);	// \n in tag becomes 0xff byte (invalid UTF)
+					n++;
+				}
+			}
+			Bprint(b, "\n");
 			if(dumped){
 				q0 = 0;
 				q1 = t->file->nc;
@@ -646,6 +646,10 @@ rowload(Row *row, char *file, int initing)
 		if(l == nil)
 			goto Rescue2;
 		l[Blinelen(b)-1] = 0;
+		/* convert 0xff in multiline tag back to \n */
+		for(i=0; l[i]!=0; i++)
+			if((uchar)l[i] == 0xff)
+				l[i] = '\n';
 		r = bytetorune(l+5*12, &nr);
 		ns = -1;
 		for(n=0; n<nr; n++){
@@ -663,7 +667,7 @@ rowload(Row *row, char *file, int initing)
 		textinsert(&w->tag, w->tag.file->nc, r+n+1, nr-(n+1), TRUE);
 		if(ndumped >= 0){
 			/* simplest thing is to put it in a file and load that */
-			sprint(buf, "/tmp/d%d.%.4sacme", getpid(), getuser());
+			sprint(buf, "/tmp/d%d.%.4sacme", getpid(), user);
 			fd = create(buf, OWRITE|ORCLOSE, 0600);
 			if(fd < 0){
 				free(r);
@@ -704,6 +708,7 @@ rowload(Row *row, char *file, int initing)
 			q0 = q1 = 0;
 		textshow(&w->body, q0, q1, 1);
 		w->maxlines = min(w->body.nlines, max(w->maxlines, w->body.maxlines));
+		xfidlog(w, "new");
 	}
 	Bterm(b);
 	fbuffree(buf);

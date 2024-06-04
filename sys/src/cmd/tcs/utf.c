@@ -1,16 +1,6 @@
-#ifdef PLAN9
 #include	<u.h>
 #include	<libc.h>
 #include	<bio.h>
-#else
-#include	<sys/types.h>
-#include	<stdio.h>
-#include	<stdlib.h>
-#include	<string.h>
-#include	<unistd.h>
-#include	<errno.h>
-#include	"plan9.h"
-#endif
 #include	"hdr.h"
 
 /*
@@ -27,13 +17,12 @@ int fullisorune(char *str, int n);
 int isochartorune(Rune *rune, char *str);
 
 void
-utf_in(int fd, long *notused, struct convert *out)
+utf_in(int fd, long *, struct convert *out)
 {
 	char buf[N];
 	int i, j, c, n, tot;
-	ulong l;
+	unsigned long l;
 
-	USED(notused);
 	tot = 0;
 	while((n = read(fd, buf+tot, N-tot)) >= 0){
 		tot += n;
@@ -41,7 +30,7 @@ utf_in(int fd, long *notused, struct convert *out)
 			c = our_mbtowc(&l, buf+i, tot-i);
 			if(c == -1){
 				if(squawk)
-					EPR "%s: bad UTF sequence near byte %ld in input\n", argv0, ninput+i);
+					warn("bad UTF sequence near byte %ld in input", ninput+i);
 				if(clean){
 					i++;
 					continue;
@@ -65,27 +54,66 @@ utf_in(int fd, long *notused, struct convert *out)
 }
 
 void
-utf_out(Rune *base, int n, long *notused)
+utf_out(Rune *base, int n, long *)
 {
 	char *p;
 	Rune *r;
 
-	USED(notused);
 	nrunes += n;
 	for(r = base, p = obuf; n-- > 0; r++){
 		p += our_wctomb(p, *r);
 	}
 	noutput += p-obuf;
-	write(1, obuf, p-obuf);
+	if(p > obuf)
+		write(1, obuf, p-obuf);
 }
 
 void
-isoutf_in(int fd, long *notused, struct convert *out)
+utfnorm_out(Rune *base, int n, int (*fn)(Rune*,Rune*,int))
+{
+	static Rune rbuf[32];
+	static int nremain = 0;
+	Rune src[N + 1 + nelem(rbuf)];
+	Rune dst[N + 1 + nelem(rbuf)];
+	Rune *p, *p2, *e;
+	int i;
+
+	e = base+n;
+	for(i = 0; i < nremain; i++,n++)
+		src[i] = rbuf[i];
+	nremain = 0;
+	for(p2 = p = base; n > 0;){
+		p2 = fullrunenorm(p, n);
+		if(p == p2)
+			break;
+		n -= p2-p;
+		for(;p < p2; p++)
+			src[i++] = *p;
+	}
+	src[i] = 0;
+	utf_out(dst, fn(dst, src, sizeof dst), nil);
+	for(; p2 < e; p2++)
+		rbuf[nremain++] = *p2;
+}
+
+void
+utfnfc_out(Rune *base, int n, long *)
+{
+	utfnorm_out(base, n, runecomp);
+}
+
+void
+utfnfd_out(Rune *base, int n, long *)
+{
+	utfnorm_out(base, n, runedecomp);
+}
+
+void
+isoutf_in(int fd, long *, struct convert *out)
 {
 	char buf[N];
 	int i, j, c, n, tot;
 
-	USED(notused);
 	tot = 0;
 	while((n = read(fd, buf+tot, N-tot)) >= 0){
 		tot += n;
@@ -93,9 +121,9 @@ isoutf_in(int fd, long *notused, struct convert *out)
 			if(!fullisorune(buf+i, tot-i))
 				break;
 			c = isochartorune(&runes[j], buf+i);
-			if(runes[j] == Runeerror && c == 1){
+			if(runes[j] == Runeerror){
 				if(squawk)
-					EPR "%s: bad UTF sequence near byte %ld in input\n", argv0, ninput+i);
+					warn("bad UTF sequence near byte %ld in input", ninput+i);
 				if(clean){
 					i++;
 					continue;
@@ -117,17 +145,17 @@ isoutf_in(int fd, long *notused, struct convert *out)
 }
 
 void
-isoutf_out(Rune *base, int n, long *notused)
+isoutf_out(Rune *base, int n, long *)
 {
 	char *p;
 	Rune *r;
 
-	USED(notused);
 	nrunes += n;
 	for(r = base, p = obuf; n-- > 0; r++)
 		p += runetoisoutf(p, r);
 	noutput += p-obuf;
-	write(1, obuf, p-obuf);
+	if(p > obuf)
+		write(1, obuf, p-obuf);
 }
 
 
@@ -295,10 +323,6 @@ fullisorune(char *str, int n)
 	return 0;
 }
 
-#ifdef PLAN9
-int	errno;
-#endif
-
 enum
 {
 	T1	= 0x00,
@@ -330,10 +354,6 @@ enum
 	Wchar3	= (1UL<<(Bit3+2*Bitx))-1,
 	Wchar4	= (1UL<<(Bit4+3*Bitx))-1,
 	Wchar5	= (1UL<<(Bit5+4*Bitx))-1,
-
-#ifndef	EILSEQ
-	EILSEQ	= 123,
-#endif /* EILSEQ */
 };
 
 int
@@ -482,6 +502,5 @@ our_mbtowc(unsigned long *p, char *s, unsigned n)
 	return 1;
 
 bad:
-	errno = EILSEQ;
 	return -1;
 }

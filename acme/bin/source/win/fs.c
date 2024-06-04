@@ -8,7 +8,7 @@
 Channel *fschan;
 Channel *writechan;
 
-static File *devcons, *devnew;
+static File *devcons, *devnew, *devwdir;
 
 static void
 fsread(Req *r)
@@ -25,7 +25,12 @@ fsread(Req *r)
 		return;
 	}
 
-	assert(r->fid->file == devcons);
+	if(r->fid->file == devwdir){
+		readstr(r, wdir);
+		respond(r, nil);
+		return;
+	}
+
 	e.type = 'r';
 	e.r = r;
 	send(fschan, &e);
@@ -44,13 +49,12 @@ fsflush(Req *r)
 static void
 fswrite(Req *r)
 {
-	static Event *e[4];	/* ours, not the one from event.h */
-	static int n, partial;
+	static Event *e[4];
 	Event *ep;
-	int i, j, ei, nb, wid, pid;
+	int nb, wid, pid;
 	Rune rune;
-	char *s;
-	char tmp[UTFmax], *t;
+	char *s, *se, *d, *p;
+	static int n, partial;
 
 	if(r->fid->file == devnew){
 		if(r->fid->aux){
@@ -60,64 +64,94 @@ fswrite(Req *r)
 		s = emalloc(r->ifcall.count+1);
 		memmove(s, r->ifcall.data, r->ifcall.count);
 		s[r->ifcall.count] = 0;
-		pid = strtol(s, &t, 0);
-		if(*t==' ')
-			t++;
-		i = newpipewin(pid, t);
+		pid = strtol(s, &p, 0);
+		if(*p==' ')
+			p++;
+		nb = newpipewin(pid, p);
 		free(s);
 		s = emalloc(32);
-		sprint(s, "%lud", (ulong)i);
+		sprint(s, "%lud", (ulong)nb);
 		r->fid->aux = s;
 		r->ofcall.count = r->ifcall.count;
 		respond(r, nil);
 		return;
 	}
 
-	assert(r->fid->file == devcons);
+	if(r->fid->file == devwdir){
+		s = emalloc(r->ifcall.count+1);
+		memmove(s, r->ifcall.data, r->ifcall.count);
+		s[r->ifcall.count] = 0;
+		if(s[0] == '#' || s[0] == '/'){
+			free(wdir);
+			wdir = s;
+		} else {
+			wdir = eappend(wdir, "/", s);
+			free(s);
+		}
+		cleanname(wdir);
+		winsetdir(win, wdir, wname);
+		respond(r, nil);
+		return;
+	}
 
+	if(r->fid->file != devcons){
+		respond(r, "bug in fswrite");
+		return;
+	}
+
+	/* init buffer rings */
 	if(e[0] == nil){
-		for(i=0; i<nelem(e); i++){
-			e[i] = emalloc(sizeof(Event));
-			e[i]->c1 = 'S';
+		for(n=0; n<nelem(e); n++){
+			e[n] = emalloc(sizeof(Event));
+			e[n]->c1 = 'S';
 		}
 	}
 
-	ep = e[n];
-	n = (n+1)%nelem(e);
-	/*
-	 * lib9p ensures that r->ifcall.count is <= srv->msize - IOHDRSZ,
-	 * where srv == &fs.
-	 */
-	assert((int)r->ifcall.count >= 0);
-	nb = r->ifcall.count;
-	if (partial + nb >= sizeof ep->b)
-		sysfatal("EVENTSIZE < MAXRPC; increase EVENTSIZE & recompile");
-	memmove(ep->b+partial, r->ifcall.data, nb);
-	nb += partial;
-	ep->b[nb] = '\0';
-	if(strlen(ep->b) < nb){	/* nulls in data */
-		t = ep->b;
-		for(i=j=0; i<nb; i++)
-			if(ep->b[i] != '\0')
-				t[j++] = ep->b[i];
-		nb = j;
-		t[j] = '\0';
+	s = r->ifcall.data;
+	se = s + r->ifcall.count;
+
+	while((nb = (se - s)) > 0){
+		assert(partial >= 0);
+		if((partial+nb) > EVENTSIZE)
+			nb = EVENTSIZE - partial;
+
+		/* fill buffer */
+		ep = e[n++ % nelem(e)];
+		memmove(ep->b+partial, s, nb);
+		partial += nb;
+		s += nb;
+
+		/* check full runes, remove null bytes */
+		ep->nr = ep->nb = 0;
+		for(d = p = ep->b; partial > 0; partial -= wid, p += wid){
+			if(*p == '\0'){
+				wid = 1;
+				continue;
+			}
+
+			if(!fullrune(p, partial))
+				break;
+
+			wid = chartorune(&rune, p);
+			runetochar(d, &rune);
+			d += wid;
+
+			ep->nr++;
+			ep->nb += wid;
+		}
+
+		/* put partial reminder onto next buffer */
+		if(partial > 0)
+			memmove(e[n % nelem(e)]->b, p, partial);
+
+		/* send buffer when not empty */
+		if(ep->nb > 0){
+			ep->b[ep->nb] = '\0';
+			sendp(win->cevent, ep);
+			recvp(writechan);
+		}
 	}
-	ei = nb>EVENTSIZE? EVENTSIZE: nb;
-	/* process bytes into runes, transferring terminal partial runes into next buffer */
-	for(i=j=0; i<ei && fullrune(ep->b+i, ei-i); i+=wid,j++)
-		wid = chartorune(&rune, ep->b+i);
-	memmove(tmp, ep->b+i, nb-i);
-//	partial = nb-i;			/* redundant */
-	ep->nb = i;
-	ep->nr = j;
-	ep->b[i] = '\0';
-	if(i != 0){
-		sendp(win->cevent, ep);
-		recvp(writechan);
-	}
-	partial = nb-i;
-	memmove(e[n]->b, tmp, partial);
+
 	r->ofcall.count = r->ifcall.count;
 	respond(r, nil);
 }
@@ -129,17 +163,24 @@ fsdestroyfid(Fid *fid)
 		free(fid->aux);
 }
 
+void
+fsstart(Srv *srv)
+{
+	proccreate(fsloop, srv->aux, STACK);
+}
+
 Srv fs = {
 .read=	fsread,
 .write=	fswrite,
 .flush=	fsflush,
 .destroyfid=	fsdestroyfid,
-.leavefdsopen=	1,
+.start = fsstart,
 };
 
 void
-mountcons(void)
+mountcons(void *arg)
 {
+	fs.aux = arg;
 	fschan = chancreate(sizeof(Fsevent), 0);
 	writechan = chancreate(sizeof(void*), 0);
 	fs.tree = alloctree("win", "win", DMDIR|0555, nil);
@@ -149,5 +190,8 @@ mountcons(void)
 	devnew = createfile(fs.tree->root, "wnew", "win", 0666, nil);
 	if(devnew == nil)
 		sysfatal("creating /dev/wnew: %r");
+	devwdir = createfile(fs.tree->root, "wdir", "win", 0666, nil);
+	if(devwdir == nil)
+		sysfatal("creating /dev/wdir: %r");
 	threadpostmountsrv(&fs, nil, "/dev", MBEFORE);
 }

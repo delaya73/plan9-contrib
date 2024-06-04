@@ -3,603 +3,966 @@
 #include <ctype.h>
 #include <bio.h>
 
-enum
-{
-	SSIZE = 10,
+typedef struct Tag Tag;
+typedef struct Attr Attr;
+typedef struct Text Text;
 
-	/* list types */
-	Lordered = 0,
-	Lunordered,
-	Lmenu,
-	Ldir,
-
+struct Attr {
+	char	attr[64];
+	char	val[256-64];
 };
 
-Biobuf in, out;
-int lastc = '\n';
-int inpre = 0;
+struct Tag {
+	Tag	*up;
+	char	tag[32];
+	Attr	attr[16];
+	int	nattr;
+	int	opening;
+	int	closing;
 
-/* stack for fonts */
-char *fontstack[SSIZE];
-char *font = "R";
-int fsp;
-
-/* stack for lists */
-struct
-{
-	int	type;
-	int	ord;
-} liststack[SSIZE];
-int lsp;
-
-int quoting;
-
-typedef struct Goobie Goobie;
-struct Goobie
-{
-	char *name;
-	void (*f)(Goobie*, char*);
-	void (*ef)(Goobie*, char*);
+	void	(*close)(Text *, Tag *);
+	union {
+		void	*aux;
+	};
 };
 
-void	eatwhite(void);
-void	escape(void);
+struct Text {
+	char*	fontstyle;
+	char*	fontsize;
+	int	pre;
+	int	pos;
+	int	space;
+	int	output;
 
-typedef void Action(Goobie*, char*);
-
-Action	g_ignore;
-Action	g_unexpected;
-Action	g_title;
-Action	g_p;
-Action	g_h;
-Action	g_li;
-Action	g_list, g_listend;
-Action	g_pre;
-Action	g_fpush, g_fpop;
-Action	g_indent, g_exdent;
-Action	g_dt;
-Action	g_display;
-Action	g_displayend;
-Action	g_table, g_tableend, g_caption, g_captionend;
-Action	g_br, g_hr;
-
-Goobie gtab[] =
-{
-	"!--",		g_ignore,	g_unexpected,
-	"!doctype",	g_ignore,	g_unexpected,
-	"a",		g_ignore,	g_ignore,
-	"address",	g_display,	g_displayend,
-	"b",		g_fpush,	g_fpop,
-	"base",		g_ignore,	g_unexpected,
-	"blink",	g_ignore,	g_ignore,
-	"blockquote",	g_ignore,	g_ignore,
-	"body",		g_ignore,	g_ignore,
-	"br",		g_br,		g_unexpected,
-	"caption",	g_caption,	g_captionend,
-	"center",	g_ignore,	g_ignore,
-	"cite",		g_ignore,	g_ignore,
-	"code",		g_ignore,	g_ignore,
-	"dd",		g_ignore,	g_unexpected,
-	"dfn",		g_ignore,	g_ignore,
-	"dir",		g_list,		g_listend,
-	"div",		g_ignore,		g_br,
-	"dl",		g_indent,	g_exdent,
-	"dt",		g_dt,		g_unexpected,
-	"em",		g_ignore,	g_ignore,
-	"font",		g_ignore,	g_ignore,
-	"form",		g_ignore,	g_ignore,
-	"h1",		g_h,		g_p,
-	"h2",		g_h,		g_p,
-	"h3",		g_h,		g_p,
-	"h4",		g_h,		g_p,
-	"h5",		g_h,		g_p,
-	"h6",		g_h,		g_p,
-	"head",		g_ignore,	g_ignore,
-	"hr",		g_hr,		g_unexpected,
-	"html",		g_ignore,	g_ignore,
-	"i",		g_fpush,	g_fpop,
-	"input",	g_ignore,	g_unexpected,
-	"img",		g_ignore,	g_unexpected,
-	"isindex",	g_ignore,	g_unexpected,
-	"kbd",		g_fpush,	g_fpop,
-	"key",		g_ignore,	g_ignore,
-	"li",		g_li,		g_unexpected,
-	"link",		g_ignore,	g_unexpected,
-	"listing",	g_ignore,	g_ignore,
-	"menu",		g_list,		g_listend,
-	"meta",		g_ignore,	g_unexpected,
-	"nextid",	g_ignore,	g_unexpected,
-	"ol",		g_list,		g_listend,
-	"option",	g_ignore,	g_unexpected,
-	"p",		g_p,		g_ignore,
-	"plaintext",	g_ignore,	g_unexpected,
-	"pre",		g_pre,		g_displayend,
-	"samp",		g_ignore,	g_ignore,
-	"script",	g_ignore,	g_ignore,
-	"select",	g_ignore,	g_ignore,
-	"span",		g_ignore,	g_ignore,
-	"strong",	g_ignore,	g_ignore,
-	"table",	g_table,	g_tableend,
-	"textarea",	g_ignore,	g_ignore,
-	"title",	g_title,	g_ignore,
-	"tt",		g_fpush,	g_fpop,
-	"u",		g_ignore,	g_ignore,
-	"ul",		g_list,		g_listend,
-	"var",		g_ignore,	g_ignore,
-	"xmp",		g_ignore,	g_ignore,
-	0,		0,	0,
+	char	*bp;
+	char	*wp;
+	int	nb;
 };
 
-typedef struct Entity Entity;
-struct Entity
-{
-	char *name;
-	Rune value;
-};
+void eatwhite(void);
+void parsetext(Text *, Tag *);
+int parsetag(Tag *);
+int parseattr(Attr *);
+void flushtext(Text *);
+char* getattr(Tag *, char *);
+int gotattr(Tag *, char *, char *);
+int gotstyle(Tag *, char *, char *);
+void reparent(Text *, Tag *, Tag *);
+void debugtag(Tag *, char *);
 
-Entity pl_entity[]=
-{
-"#SPACE", L' ', "#RS",   L'\n', "#RE",   L'\r', "quot",   L'"',
-"AElig",  L'Æ', "Aacute", L'Á', "Acirc",  L'Â', "Agrave", L'À', "Aring",  L'Å',
-"Atilde", L'Ã', "Auml",   L'Ä', "Ccedil", L'Ç', "ETH",    L'Ð', "Eacute", L'É',
-"Ecirc",  L'Ê', "Egrave", L'È', "Euml",   L'Ë', "Iacute", L'Í', "Icirc",  L'Î',
-"Igrave", L'Ì', "Iuml",   L'Ï', "Ntilde", L'Ñ', "Oacute", L'Ó', "Ocirc",  L'Ô',
-"Ograve", L'Ò', "Oslash", L'Ø', "Otilde", L'Õ', "Ouml",   L'Ö', "THORN",  L'Þ',
-"Uacute", L'Ú', "Ucirc",  L'Û', "Ugrave", L'Ù', "Uuml",   L'Ü', "Yacute", L'Ý',
-"aacute", L'á', "acirc",  L'â', "aelig",  L'æ', "agrave", L'à', "amp",    L'&',
-"aring",  L'å', "atilde", L'ã', "auml",   L'ä', "ccedil", L'ç', "eacute", L'é',
-"ecirc",  L'ê', "egrave", L'è', "eth",    L'ð', "euml",   L'ë', "gt",     L'>',
-"iacute", L'í', "icirc",  L'î', "igrave", L'ì', "iuml",   L'ï', "lt",     L'<',
-"nbsp", L' ',
-"ntilde", L'ñ', "oacute", L'ó', "ocirc",  L'ô', "ograve", L'ò', "oslash", L'ø',
-"otilde", L'õ', "ouml",   L'ö', "szlig",  L'ß', "thorn",  L'þ', "uacute", L'ú',
-"ucirc",  L'û', "ugrave", L'ù', "uuml",   L'ü', "yacute", L'ý', "yuml",   L'ÿ',
-0
-};
+Biobuf in;
 
-int
-cistrcmp(char *a, char *b)
+void
+emitbuf(Text *text, char *buf, int nbuf)
 {
-	int c, d;
+	int nw;
 
-	for(;; a++, b++){
-		d = tolower(*a);
-		c = d - tolower(*b);
-		if(c)
-			break;
-		if(d == 0)
-			break;
+	nw = text->wp - text->bp;
+	if((text->nb - nw) < nbuf){
+		if(nbuf < 4096)
+			text->nb = nw + 4096;
+		else
+			text->nb = nw + nbuf;
+		text->bp = realloc(text->bp, text->nb);
+		text->wp = text->bp + nw;
 	}
-	return c;
-}
-
-int
-readupto(char *buf, int n, char d, char notme)
-{
-	char *p;
-	int c;
-
-	buf[0] = 0;
-	for(p = buf;; p++){
-		c = Bgetc(&in);
-		if(c < 0){
-			*p = 0;
-			return -1;
-		}
-		if(c == notme){
-			Bungetc(&in);
-			return -1;
-		}
-		if(c == d){
-			*p = 0;
-			return 0;
-		}
-		*p = c;
-		if(p == buf + n){
-			*p = 0;
-			Bprint(&out, "<%s", buf);
-			return -1;
-		}
-	}
+	memmove(text->wp, buf, nbuf);
+	text->wp += nbuf;
 }
 
 void
-dogoobie(void)
+emitrune(Text *text, Rune r)
 {
-	char *arg, *type;
-	Goobie *g;
-	char buf[1024];
-	int closing;
+	char buf[UTFmax+1];
 
-	if(readupto(buf, sizeof(buf), '>', '<') < 0){
-		Bprint(&out, "<%s", buf);
+	if(r == '\r' || r =='\n'){
+		text->pos = 0;
+		text->space = 0;
+	}else
+		text->pos++;
+	emitbuf(text, buf, runetochar(buf, &r));
+}
+
+void
+emit(Text *text, char *fmt, ...)
+{
+	Rune buf[64];
+	va_list a;
+	int i;
+
+	if(fmt[0] == '.' && text->pos)
+		emitrune(text, '\n');
+	va_start(a, fmt);
+	runevsnprint(buf, nelem(buf), fmt, a);
+	va_end(a);
+	for(i=0; buf[i]; i++)
+		emitrune(text, buf[i]);
+}
+
+void
+restoreoutput(Text *text, Tag *)
+{
+	text->output = 1;
+}
+
+void
+ongarbage(Text *text, Tag *tag)
+{
+	if(text->output == 0)
 		return;
-	}
-	type = buf;
-	if(*type == '/'){
-		type++;
-		closing = 1;
-	} else
-		closing = 0;
-	arg = strchr(type, ' ');
-	if(arg == 0)
-		arg = strchr(type, '\r');
-	if(arg == 0)
-		arg = strchr(type, '\n');
-	if(arg)
-		*arg++ = 0;
-	for(g = gtab; g->name; g++)
-		if(cistrcmp(type, g->name) == 0){
-			if(closing){
-				if(g->ef){
-					(*g->ef)(g, arg);
-					return;
-				}
-			} else {
-				if(g->f){
-					(*g->f)(g, arg);
-					return;
-				}
-			}
-		}
-	if(closing)
-		type--;
-	if(arg)
-		Bprint(&out, "<%s %s>\n", type, arg);
+	tag->close = restoreoutput;
+	text->output = 0;
+}
+
+void
+onmeta(Text *, Tag *tag)
+{
+	tag->closing = 1;
+}
+
+void
+onp(Text *text, Tag *)
+{
+	emit(text, ".LP\n");
+}
+
+void
+restorepre(Text *text, Tag *)
+{
+	text->pre = 0;
+	emit(text, ".DE\n");
+}
+
+void
+onpre(Text *text, Tag *tag)
+{
+	if(text->pre)
+		return;
+	tag->close = restorepre;
+	text->pre = 1;
+	emit(text, ".DS L\n");
+}
+
+void
+onli(Text *text, Tag *tag)
+{
+	if(tag->up && cistrcmp(tag->up->tag, "ol") == 0)
+		emit(text, ".IP\n");
 	else
-		Bprint(&out, "<%s>\n", type);
+		emit(text, ".IP \\(bu\n");
+	if(tag->up)
+		tag->up->close = onp;
 }
 
 void
-main(void)
+onh(Text *text, Tag *tag)
 {
-	int c, pos;
-
-	Binit(&in, 0, OREAD);
-	Binit(&out, 1, OWRITE);
-
-	pos = 0;
-	for(;;){
-		c = Bgetc(&in);
-		if(c < 0)
-			return;
-		switch(c){
-		case '<':
-			dogoobie();
-			break;
-		case '&':
-			escape();
-			break;
-		case '\r':
-			pos = 0;
-			break;
-		case '\n':
-			if(quoting){
-				Bputc(&out, '"');
-				quoting = 0;
-			}
-			if(lastc != '\n')
-				Bputc(&out, '\n');
-			/* can't emit leading spaces in filled troff docs */
-			if (!inpre)
-				eatwhite();
-			lastc = c;
-			break;
-		default:
-			++pos;
-			if(!inpre && isascii(c) && isspace(c) && pos > 80){
-				Bputc(&out, '\n');
-				eatwhite();
-				pos = 0;
-			}else
-				Bputc(&out, c);
-			lastc = c;
-			break;
-		}
-	}
+	emit(text, ".SH\n");
+	tag->close = onp;
 }
 
 void
-escape(void)
+onbr(Text *text, Tag *tag)
 {
-	int c;
-	Entity *e;
-	char buf[8];
+	tag->closing = 1;
+	emit(text, ".br\n");
+	if(cistrcmp(tag->tag, "hr") == 0)
+		emit(text, "\\l'5i'\n.br\n");
+}
 
-	if(readupto(buf, sizeof(buf), ';', '\n') < 0){
-		Bprint(&out, "&%s", buf);
+void
+fontstyle(Text *text, char *style)
+{
+	if(strcmp(text->fontstyle, style) == 0)
 		return;
-	}
-	for(e = pl_entity; e->name; e++)
-		if(strcmp(buf, e->name) == 0){
-			Bprint(&out, "%C", e->value);
-			return;
-		}
-	if(*buf == '#'){
-		c = atoi(buf+1);
-		if(isascii(c) && isprint(c)){
-			Bputc(&out, c);
-			return;
-		}
-	}
-	Bprint(&out, "&%s;", buf);
+	text->fontstyle = style;
+	emit(text, "\\f%s", style);
+}
+
+void
+fontsize(Text *text, char *size)
+{
+	if(strcmp(text->fontsize, size) == 0)
+		return;
+	text->fontsize = size;
+	emit(text, ".%s\n", size);
+}
+
+void
+restorefontstyle(Text *text, Tag *tag)
+{
+	fontstyle(text, tag->aux);
+}
+
+void
+restorefontsize(Text *text, Tag *tag)
+{
+	fontsize(text, tag->aux);
+}
+
+void
+oni(Text *text, Tag *tag)
+{
+	tag->aux = text->fontstyle;
+	tag->close = restorefontstyle;
+	fontstyle(text, "I");
+}
+
+void
+onb(Text *text, Tag *tag)
+{
+	tag->aux = text->fontstyle;
+	tag->close = restorefontstyle;
+	fontstyle(text, "B");
+}
+
+void onsmall(Text *text, Tag *tag);
+void onsup(Text *text, Tag *tag);
+
+void
+onsub(Text *text, Tag *tag)
+{
+	emit(text, "\\v\'0.5\'");
+	if(cistrcmp(tag->tag, "sub") == 0){
+		emit(text, "\\x\'0.5\'");
+		onsmall(text, tag);
+	} else
+		restorefontsize(text, tag);
+	tag->close = onsup;
+}
+
+void
+onsup(Text *text, Tag *tag)
+{
+	emit(text, "\\v\'-0.5\'");
+	if(cistrcmp(tag->tag, "sup") == 0){
+		emit(text, "\\x\'-0.5\'");
+		onsmall(text, tag);
+	}else
+		restorefontsize(text, tag);
+	tag->close = onsub;
 }
 
 /*
- * whitespace is not significant to HTML, but newlines
- * and leading spaces are significant to troff.
+ * this is poor mans CSS handler.
  */
+void
+onspan(Text *text, Tag *tag)
+{
+	Attr *a;
+
+	if(!tag->opening)
+		return;
+
+	for(a=tag->attr; a < tag->attr+tag->nattr; a++){
+		if(cistrcmp(a->attr, "class") != 0)
+			continue;
+
+		if(cistrcmp(a->val, "bold") == 0){
+			onb(text, tag);
+			return;
+		}
+		if(cistrcmp(a->val, "italic") == 0){
+			oni(text, tag);
+			return;
+		}
+		if(cistrcmp(a->val, "subscript") == 0){
+			strcpy(tag->tag, "sub");
+			onsub(text, tag);
+			strcpy(tag->tag, "span");
+			return;
+		}
+		if(cistrcmp(a->val, "superscript") == 0){
+			strcpy(tag->tag, "sup");
+			onsup(text, tag);
+			strcpy(tag->tag, "span");
+			return;
+		}
+	}
+}
+
+void
+ontt(Text *text, Tag *tag)
+{
+	tag->aux = text->fontstyle;
+	tag->close = restorefontstyle;
+	fontstyle(text, "C");
+}
+
+void
+onsmall(Text *text, Tag *tag)
+{
+	tag->aux = text->fontsize;
+	tag->close = restorefontsize;
+	fontsize(text, "SM");
+}
+
+void
+onbig(Text *text, Tag *tag)
+{
+	tag->aux = text->fontsize;
+	tag->close = restorefontsize;
+	fontsize(text, "LG");
+}
+
+void
+endquote(Text *text, Tag *tag)
+{
+	if(cistrcmp(tag->tag, "q") == 0)
+		emitrune(text, '"');
+	emit(text, ".QE\n");
+}
+
+void
+onquote(Text *text, Tag *tag)
+{
+	tag->close = endquote;
+	if(cistrcmp(tag->tag, "q") == 0)
+		emit(text, ".QS\n\"");
+	else
+		emit(text, ".QP\n");
+}
+
+typedef struct Table Table;
+struct Table
+{
+	char	*bp;
+	int	nb;
+
+	Table	*next;
+	Table	*prev;
+	int	enclose;
+	int	brk;
+
+	char	fmt[4];
+
+	Text	save;
+};
+
+Tag*
+tabletag(Tag *tag)
+{
+	if(tag == nil)
+		return nil;
+	if(cistrcmp(tag->tag, "table") == 0)
+		return tag;
+	return tabletag(tag->up);
+}
+
+void
+dumprows(Text *text, Table *s, Table *e)
+{
+	
+	for(; s != e; s = s->next){
+		if(s->enclose)
+			emit(text, "T{\n");
+		if(s->nb <= 0)
+			emit(text, "\\ ");
+		else
+			emitbuf(text, s->bp, s->nb);
+		if(s->enclose)
+			emit(text, "\nT}");
+		emitrune(text, s->brk ? '\n' : '\t');
+	}
+}
+
+void
+endtable(Text *text, Tag *tag)
+{
+	int i, cols, rows;
+	Table *t, *h, *s;
+	Tag *tt;
+
+	/* reverse list */
+	h = nil;
+	t = tag->aux;
+ 	for(; t; t = t->prev){
+		t->next = h;
+		h = t;
+	}
+
+	/*
+	 * nested table case, add our cells to the next table up.
+	 * this is the best we can do, tbl doesnt support nesting
+	 */
+	if(tt = tabletag(tag->up)){
+		while(t = h){
+			h = h->next;
+			t->next = nil;
+			t->prev = tt->aux;
+			tt->aux = t;
+		}
+		return;
+	}
+
+	cols = 0;
+	rows = 0;
+	for(i = 0, t = h; t; t = t->next){
+		i++;
+		if(t->brk){
+			rows++;
+			if(i > cols)
+				cols = i;
+			i = 0;
+		}
+	}
+
+	i = 0;
+ 	for(t = h; t; t = t->next){
+		i++;
+		if(t->brk){
+			while(i < cols){
+				s = mallocz(sizeof(Table), 1);
+				strcpy(s->fmt, "L");
+				s->brk = t->brk;
+				t->brk = 0;
+				s->next = t->next;
+				t->next = s;
+				i++;
+			}
+			break;
+		}
+	}
+
+	s = h;
+	while(s){
+		emit(text, ".TS\n");
+		if(gotattr(tag, "align", "center"))
+			emit(text, "center ;\n");
+		i = 0;
+		for(t = s; t; t = t->next){
+			emit(text, "%s", t->fmt);
+			if(t->brk){
+				emitrune(text, '\n');
+				if(++i > 30){
+					t = t->next;
+					break;
+				}
+			}else
+				emitrune(text, ' ');
+		}
+		emit(text, ".\n");
+		dumprows(text, s, t);
+		emit(text, ".TE\n");
+		s = t;
+	}
+
+	while(t = h){
+		h = t->next;
+		free(t->bp);
+		free(t);
+	}
+}
+
+void
+ontable(Text *, Tag *tag)
+{
+	tag->aux = nil;
+	tag->close = endtable;
+}
+
+void
+endcell(Text *text, Tag *tag)
+{
+	Table *t;
+	Tag *tt;
+	int i;
+
+	if((tt = tabletag(tag)) == nil)
+		return;
+	if(cistrcmp(tag->tag, "tr") == 0){
+		if(t = tt->aux)
+			t->brk = 1;
+	} else {
+		t = tag->aux;
+		t->bp = text->bp;
+		t->nb = text->wp - text->bp;
+
+		for(i=0; i<t->nb; i++)
+			if(strchr(" \t\r\n", t->bp[i]) == nil)
+				break;
+		if(i > 0){
+			memmove(t->bp, t->bp+i, t->nb - i);
+			t->nb -= i;
+		}
+		while(t->nb > 0 && strchr(" \t\r\n", t->bp[t->nb-1]))
+			t->nb--;
+		if(t->nb < 32){
+			for(i=0; i<t->nb; i++)
+				if(strchr("\t\r\n", t->bp[i]))
+					break;
+			t->enclose = i < t->nb;
+		} else {
+			t->enclose = 1;
+		}
+		if(gotstyle(tag, "text-align", "center") || gotstyle(tt, "text-align", "center"))
+			strcpy(t->fmt, "C");
+		else
+			strcpy(t->fmt, "L");
+		if(strcmp(tag->tag, "th") == 0)
+			strcpy(t->fmt+1, "B");
+		t->prev = tt->aux;
+		tt->aux = t;
+		*text = t->save;
+	}
+}
+
+void
+oncell(Text *text, Tag *tag)
+{
+	Tag *tt;
+
+	if((tt = tabletag(tag)) == nil)
+		return;
+	if(cistrcmp(tag->tag, "tr")){
+		Table *t;
+
+		tt = tag->up;
+		while(tt && cistrcmp(tt->tag, "tr"))
+			tt = tt->up;
+		if(tt == nil)
+			return;
+		reparent(text, tag, tt);
+
+		t = mallocz(sizeof(*t), 1);
+		t->save = *text;
+		tag->aux = t;
+
+		text->bp = nil;
+		text->wp = nil;
+		text->nb = 0;
+		text->pos = 0;
+		text->space = 0;
+	} else
+		reparent(text, tag, tt);
+	tag->close = endcell;
+}
+
+struct {
+	char	*tag;
+	void	(*open)(Text *, Tag *);
+} ontag[] = {
+	"b",		onb,
+	"big",		onbig,
+	"blockquote",	onquote,
+	"br",		onbr,
+	"cite",		oni,
+	"code",		ontt,
+	"dfn",		oni,
+	"em",		oni,
+	"h1",		onh,
+	"h2",		onh,
+	"h3",		onh,
+	"h4",		onh,
+	"h5",		onh,
+	"h6",		onh,
+	"head",		ongarbage,
+	"hr",		onbr,
+	"i",		oni,
+	"img",		onmeta,
+	"kbd",		ontt,
+	"li",		onli,
+	"link",		onmeta,
+	"meta",		onmeta,
+	"p",		onp,
+	"pre",		onpre,
+	"q",		onquote,
+	"samp",		ontt,
+	"script",	ongarbage,
+	"small",	onsmall,
+	"strong",	onb,
+	"style",	ongarbage,
+	"table",	ontable,
+	"td",		oncell,
+	"th",		oncell,
+	"tr",		oncell,
+	"sub",		onsub,
+	"sup",		onsup,
+	"span",		onspan,
+	"tt",		ontt,
+	"var",		oni,
+};
+
 void
 eatwhite(void)
 {
 	int c;
 
-	for(;;){
-		c = Bgetc(&in);
-		if(c < 0)
-			break;
-		if(!isspace(c)){
+	while((c = Bgetc(&in)) > 0){
+		if(strchr("\n\r\t ", c) == nil){
+			Bungetc(&in);
+			return;
+		}
+	}
+}
+
+void
+parsecomment(void)
+{
+	char buf[64];
+	int n, c;
+
+	n = 0;
+	eatwhite();
+	while((c = Bgetc(&in)) > 0){
+		if(c == '>')
+			return;
+		if(n == 0 && c == '-'){
+			while((c = Bgetc(&in)) > 0){
+				if(c == '-')
+					if(Bgetc(&in) == '-')
+						if(Bgetc(&in) == '>')
+							return;
+			}
+		}
+		if(n+1 < sizeof(buf)){
+			buf[n++] = c;
+			if(n != 7 || cistrncmp(buf, "[CDATA[", 7))
+				continue;
+			while((c = Bgetc(&in)) > 0){
+				if(c == ']'){
+					if(Bgetc(&in) == ']'){
+						if(Bgetc(&in) != '>')
+							Bungetc(&in);
+						return;
+					}
+				}
+			}
+		}
+	}
+}
+
+int
+parseattr(Attr *a)
+{
+	int q, c, n;
+
+	n = 0;
+	eatwhite();
+	while((c = Bgetc(&in)) > 0){
+		if(strchr("</>=?!", c)){
 			Bungetc(&in);
 			break;
 		}
-	}
-}
-
-/*
- *  print at start of line
- */
-void
-printsol(char *fmt, ...)
-{
-	va_list arg;
-
-	if(quoting){
-		Bputc(&out, '"');
-		quoting = 0;
-	}
-	if(lastc != '\n')
-		Bputc(&out, '\n');
-	va_start(arg, fmt);
-	Bvprint(&out, fmt, arg);
-	va_end(arg);
-	lastc = '\n';
-}
-
-void
-g_ignore(Goobie *g, char *arg)
-{
-	USED(g, arg);
-}
-
-void
-g_unexpected(Goobie *g, char *arg)
-{
-	USED(arg);
-	fprint(2, "unexpected %s ending\n", g->name);
-}
-
-void
-g_title(Goobie *g, char *arg)
-{
-	USED(arg);
-	printsol(".TL\n", g->name);
-}
-
-void
-g_p(Goobie *g, char *arg)
-{
-	USED(arg);
-	printsol(".LP\n", g->name);
-}
-
-void
-g_h(Goobie *g, char *arg)
-{
-	USED(arg);
-	printsol(".SH %c\n", g->name[1]);
-}
-
-void
-g_list(Goobie *g, char *arg)
-{
-	USED(arg);
-
-	if(lsp != SSIZE){
-		switch(g->name[0]){
-		case 'o':
-			liststack[lsp].type  = Lordered;
-			liststack[lsp].ord = 0;
+		if(strchr("\n\r\t ", c))
 			break;
-		default:
-			liststack[lsp].type = Lunordered;
-			break;
+		if(n < sizeof(a->attr)-1)
+			a->attr[n++] = c;
+	}
+	if(n == 0)
+		return 0;
+	a->attr[n] = 0;
+	n = 0;
+	eatwhite();
+	if(Bgetc(&in) == '='){
+		eatwhite();
+		c = Bgetc(&in);
+		if(strchr("'\"", c)){
+			q = c;
+			while((c = Bgetc(&in)) > 0){
+				if(c == q)
+					break;
+				if(n < sizeof(a->val)-1)
+					a->val[n++] = c;
+			}
+		} else {
+			Bungetc(&in);
+			while((c = Bgetc(&in)) > 0){
+				if(strchr("\n\r\t </>?!", c)){
+					Bungetc(&in);
+					break;
+				}
+				if(n < sizeof(a->val)-1)
+					a->val[n++] = c;
+			}
 		}
+	} else
+		Bungetc(&in);
+	a->val[n] = 0;
+	return 1;
+}
+
+int
+parsetag(Tag *t)
+{
+	int n, c;
+
+	t->nattr = 0;
+	t->opening = 1;
+	t->closing = 0;
+
+	n = 0;
+	eatwhite();
+	while((c = Bgetc(&in)) > 0){
+		if(c == '>')
+			break;
+		if(strchr("\n\r\t ", c)){
+			if(parseattr(t->attr + t->nattr))
+				if(t->nattr < nelem(t->attr)-1)
+					t->nattr++;
+			continue;
+		}
+		if(n == 0 && strchr("?!", c)){
+			parsecomment();
+			return 0;
+		}
+		if(c == '/'){
+			if(n == 0){
+				t->opening = 0;
+				t->closing = 1;
+			} else
+				t->closing = 1;
+			continue;
+		}
+		if(n < sizeof(t->tag)-1)
+			t->tag[n++] = c;
 	}
-	lsp++;
+	t->tag[n] = 0;
+	return n > 0;
+}
+
+Rune
+parserune(int c)
+{
+	char buf[10];
+	int n;
+	Rune r;
+
+	n = 0;
+	if(c == '&'){
+		while((c = Bgetc(&in)) > 0){
+			if(strchr(";&</>\n\r\t ", c)){
+				if(c != ';')
+					Bungetc(&in);
+				if(n == 0)
+					return '&';
+				break;
+			}
+			if(n == sizeof(buf)-1)
+				break;
+			buf[n++] = c;
+		}
+		buf[n] = 0;
+		if(strcmp(buf, "lt") == 0)
+			return '<';
+		if(strcmp(buf, "gt") == 0)
+			return '>';
+		if(strcmp(buf, "quot") == 0)
+			return '"';
+		if(strcmp(buf, "apos") == 0)
+			return '\'';
+		if(strcmp(buf, "amp") == 0)
+			return '&';
+		/* use tcs -f html to handle the rest. */
+	} else {
+		do {
+			buf[n++] = c;
+			if(fullrune(buf, n)){
+				chartorune(&r, buf);
+				return r;
+			}
+			if(n >= UTFmax)
+				break;
+		} while((c = Bgetc(&in)) > 0);
+	}
+	return Runeerror;
+}
+
+Rune
+substrune(Rune r)
+{
+	switch(r){
+	case 0x2019:
+	case 0x2018:
+		return '\'';
+	case 0x201c:
+	case 0x201d:
+		return '"';
+	default:
+		return r;
+	}
 }
 
 void
-g_br(Goobie *g, char *arg)
+debugtag(Tag *tag, char *dbg)
 {
-	USED(g, arg);
-	printsol(".br\n");
-}
-
-void
-g_li(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	if(lsp <= 0 || lsp > SSIZE){
-		printsol(".IP \\(bu\n");
+	if(1){
+		USED(tag);
+		USED(dbg);
 		return;
 	}
-	switch(liststack[lsp-1].type){
-	case Lunordered:
-		printsol(".IP \\(bu\n");
-		break;
-	case Lordered:
-		printsol(".IP %d\n", ++liststack[lsp-1].ord);
-		break;
+
+	if(tag == nil)
+		return;
+	debugtag(tag->up, nil);
+	fprint(2, "%s %s%s", tag->tag, dbg ? dbg : " > ", dbg ? "\n" : "");
+}
+
+char*
+getattr(Tag *tag, char *attr)
+{
+	int i;
+
+	for(i=0; i<tag->nattr; i++)
+		if(cistrcmp(tag->attr[i].attr, attr) == 0)
+			return tag->attr[i].val;
+	return nil;
+}
+
+int
+gotattr(Tag *tag, char *attr, char *val)
+{
+	char *v;
+
+	if((v = getattr(tag, attr)) == nil)
+		return 0;
+	return cistrstr(v, val) != 0;
+}
+
+int
+gotstyle(Tag *tag, char *style, char *val)
+{
+	char *v;
+
+	if((v = getattr(tag, "style")) == nil)
+		return 0;
+	if((v = cistrstr(v, style)) == nil)
+		return 0;
+	v += strlen(style);
+	while(*v && *v != ':')
+		v++;
+	if(*v != ':')
+		return 0;
+	v++;
+	while(*v && strchr("\t ", *v))
+		v++;
+	if(cistrncmp(v, val, strlen(val)))
+		return 0;
+	return 1;
+}
+
+void
+reparent(Text *text, Tag *tag, Tag *up)
+{
+	Tag *old;
+
+	old = tag->up;
+	while(old != up){
+		debugtag(old, "reparent");
+		if(old->close){
+			old->close(text, old);
+			old->close = nil;
+		}
+		old = old->up;
+	}
+	tag->up = up;
+}
+
+
+void
+parsetext(Text *text, Tag *tag)
+{
+	int hidden, c;
+	Tag t, *up;
+	Rune r;
+
+	if(tag){
+		up = tag->up;
+		debugtag(tag, "open");
+		for(c = 0; c < nelem(ontag); c++){
+			if(cistrcmp(tag->tag, ontag[c].tag) == 0){
+				ontag[c].open(text, tag);
+				break;
+			}
+		}
+		hidden = getattr(tag, "hidden") || gotstyle(tag, "display", "none");
+	} else {
+		up = nil;
+		hidden = 0;
+	}
+	if(tag == nil || tag->closing == 0){
+		while((c = Bgetc(&in)) > 0){
+			if(c == '<'){
+				memset(&t, 0, sizeof(t));
+				if(parsetag(&t)){
+					if(t.opening){
+						t.up = tag;
+						parsetext(text, &t);
+						if(t.up != tag){
+							debugtag(tag, "skip");
+							up = t.up;
+							break;
+						}
+						debugtag(tag, "back");
+					} else if(t.closing){
+						up = tag;
+						while(up && cistrcmp(up->tag, t.tag))
+							up = up->up;
+						if(up){
+							up = up->up;
+							break;
+						}
+					}
+				}
+				continue;
+			}
+			if(hidden || !text->output)
+				continue;
+			r = substrune(parserune(c));
+			switch(r){
+			case '\n':
+			case '\r':
+			case ' ':
+			case '\t':
+				if(text->pre == 0){
+					text->space = 1;
+					break;
+				}
+			default:
+				if(text->space){
+					if(text->pos >= 70)
+						emitrune(text, '\n');
+					else if(text->pos > 0)
+						emitrune(text, ' ');
+				}
+				if((text->pos == 0 && r == '.') || r == '\\')
+					emit(text, "\\&");
+				if(r == '\\' || r == 0xA0)
+					emitrune(text, '\\');
+				if(r == 0xA0)
+					r = ' ';
+				emitrune(text, r);
+				text->space = 0;
+			}
+		}
+	}
+	if(tag){
+		debugtag(tag, "close");
+		if(tag->close){
+			tag->close(text, tag);
+			tag->close = nil;
+		}
+		if(up)
+			tag->up = up;
 	}
 }
 
 void
-g_listend(Goobie *g, char *arg)
+inittext(Text *text)
 {
-	USED(g, arg);
-	if(--lsp < 0)
-		lsp = 0;
-	printsol(".LP\n");
+	memset(text, 0, sizeof(Text));
+	text->fontstyle = "R";
+	text->fontsize = "NL";
+	text->output = 1;
 }
 
 void
-g_display(Goobie *g, char *arg)
+main(void)
 {
-	USED(g, arg);
-	printsol(".DS\n");
-}
-
-void
-g_pre(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".DS L\n");
-	inpre = 1;
-}
-
-void
-g_displayend(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".DE\n");
-	inpre = 0;
-}
-
-void
-g_fpush(Goobie *g, char *arg)
-{
-	USED(arg);
-	if(fsp < SSIZE)
-		fontstack[fsp] = font;
-	fsp++;
-	switch(g->name[0]){
-	case 'b':
-		font = "B";
-		break;
-	case 'i':
-		font = "I";
-		break;
-	case 'k':		/* kbd */
-	case 't':		/* tt */
-		font = "(CW";
-		break;
-	}
-	Bprint(&out, "\\f%s", font);
-}
-
-void
-g_fpop(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	fsp--;
-	if(fsp < SSIZE)
-		font = fontstack[fsp];
-	else
-		font = "R";
-
-	Bprint(&out, "\\f%s", font);
-}
-
-void
-g_indent(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".RS\n");
-}
-
-void
-g_exdent(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".RE\n");
-}
-
-void
-g_dt(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".IP \"");
-	quoting = 1;
-}
-
-void
-g_hr(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".br\n");
-	printsol("\\l'5i'\n");
-}
-
-
-/*
-<table border>
-<caption><font size="+1"><b>Cumulative Class Data</b></font></caption>
-<tr><th rowspan=2>DOSE<br>mg/kg</th><th colspan=2>PARALYSIS</th><th colspan=2>DEATH</th>
-</tr>
-<tr><th width=80>Number</th><th width=80>Percent</th><th width=80>Number</th><th width=80>Percent</th>
-</tr>
-<tr align=center>
-<td>0.1</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.2</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.3</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.4</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.5</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.6</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.7</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.8</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-<tr align=center>
-<td>0.8 oral</td><td><br></td> <td><br></td> <td><br></td> <td><br></td>
-</tr>
-</table>
-*/
-
-void
-g_table(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".TS\ncenter ;\n");
-}
-
-void
-g_tableend(Goobie *g, char *arg)
-{
-	USED(g, arg);
-	printsol(".TE\n");
-}
-
-void
-g_caption(Goobie *g, char *arg)
-{
-	USED(g, arg);
-}
-
-void
-g_captionend(Goobie *g, char *arg)
-{
-	USED(g, arg);
+	Text text;
+	Binit(&in, 0, OREAD);
+	inittext(&text);
+	parsetext(&text, nil);
+	emit(&text, "\n");
+	write(1, text.bp, text.wp - text.bp);
 }

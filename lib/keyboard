@@ -4,7 +4,7 @@
 00A4  g$          ¤	currency sign
 00A5  y$          ¥	yen sign
 00A6  ||          ¦	broken vertical bar
-00A7  SS          §	section sign
+00A7  Ss          §	section sign
 00A8  ""          ¨	spacing diaeresis
 00A9  Oc cO       ©	copyright sign
 00AA  sa          ª	feminine ordinal indicator
@@ -15,14 +15,14 @@
 00AF  __          ¯	spacing macron
 00B0  de          °	degree sign
 00B1  +-          ±	plus-or-minus sign
-00B2  S2          ²	superscript digit two
-00B3  S3          ³	superscript digit three
+00B2  s2          ²	superscript digit two
+00B3  s3          ³	superscript digit three
 00B4  ''          ´	spacing acute
 00B5  mi          µ	micro sign
 00B6  pg          ¶	paragraph sign
 00B7  ..          ·	middle dot
 00B8  ,,          ¸	spacing cedilla
-00B9  S1          ¹	superscript digit one
+00B9  s1          ¹	superscript digit one
 00BA  so          º	masculine ordinal indicator
 00BB  >>          »	right pointing guillemet
 00BC  14          ¼	fraction one quarter
@@ -165,6 +165,8 @@
 014D  _o          ō	latin small letter o macron
 014E  uO          Ŏ	latin capital letter o breve
 014F  uo          ŏ	latin small letter o breve
+0150  hO          Ő	latin capital letter o double acute
+0151  ho          ő     latin small letter o double acute
 0152  OE          Œ	latin capital letter o e
 0153  oe          œ	latin small letter o e
 0154  'R          Ŕ	latin capital letter r acute
@@ -385,21 +387,23 @@
 044E  @yu         ю	cyrillic small letter iu
 044F  @ya         я	cyrillic small letter ia
 0451  @yo         ё	cyrillic small letter io
+1D62  bi          ᵢ	subscript latin small letter i
+2013  en          –	en dash
+2014  em          —	em dash
 2018  l'          ‘	single turned comma quotation mark
 2019  r'          ’	single comma quotation mark
 201C  l"          “	double turned comma quotation mark
 201D  r"          ”	double comma quotation mark
+201E  lq          „	double low-9 quotation mark
 2020  dg          †	dagger
 2021  dd          ‡	double dagger
 2022  bu          •	bullet
-2024  1.          ․ one dot leader
-2025  2.          ‥ two dot leader
-2026  3.          … horizontal ellipsis
+2024  1.          ․	one dot leader
+2025  2.          ‥	two dot leader
+2026  3.          …	horizontal ellipsis
 203D  !? ?!       ‽	interrobang
 2070  s0          ⁰	superscript digit zero
-2071  s1          ⁱ	superscript digit one
-2072  s2          ⁲	superscript digit two
-2073  s3          ⁳	superscript digit three
+2071  si          ⁱ	superscript latin small letter i
 2074  s4          ⁴	superscript digit four
 2075  s5          ⁵	superscript digit five
 2076  s6          ⁶	superscript digit six
@@ -412,8 +416,6 @@
 207D  s(          ⁽	superscript opening parenthesis
 207E  s)          ⁾	superscript closing parenthesis
 207F  sn          ⁿ	superscript latin small letter n
-2013  en          –	en dash
-2014  em          —	em dash
 2080  b0          ₀	subscript digit zero
 2081  b1          ₁	subscript digit one
 2082  b2          ₂	subscript digit two
@@ -429,6 +431,7 @@
 208C  b=          ₌	subscript equals sign
 208D  b(          ₍	subscript opening parenthesis
 208E  b)          ₎	subscript closing parenthesis
+2099  bN          ₙ	subscript latin small letter n
 20AC  e$          €	euro symbol
 2102  CC          ℂ	double-struck capital c
 210A  $g          ℊ	script small g
@@ -470,6 +473,10 @@
 2192  ->          →	right arrow
 2193  da          ↓	down arrow
 2194  ab          ↔	left right arrow
+2196  nw          ↖	north-west arrow
+2197  ne          ↗	north-east arrow
+2198  se          ↘	south-east arrow
+2199  sw          ↙	south-west arrow
 21D0  V=          ⇐	left double arrow
 21D2  =V          ⇒	right double arrow
 2200  fa          ∀	for all
@@ -485,6 +492,7 @@
 2211  su          ∑	n-ary summation
 2213  -+          ∓	minus-or-plus sign
 2217  **          ∗	asterisk operator
+2219  bo          ∙	bullet operator
 221A  sr          √	square root
 221D  pt          ∝	proportional to
 221E  if          ∞	infinity
@@ -495,6 +503,8 @@
 222A  cu          ∪	union
 222B  is          ∫	integral
 2234  tf          ∴	therefore
+2235  bc          ∵	because
+2237  ::          ∷	proportion
 2242  -~          ≂	minus tilde
 2243  ~-          ≃	asymptotically equal to
 2244  !~-         ≄	not asymptotically equal to
@@ -544,8 +554,19 @@
 22E7  >!~         ⋧	greater than but not equivalent to
 22EF  el          ⋯	midline horizontal ellipsis
 2423              ␣	open box, visible space
-2639  :(          ☹ sad face
-263A  :)          ☺ smiley face
+2468  O9 9O       ⑨	circled digit nine
+2605  P*          ★	pentagram
+261C  fl          ☜	finger left
+261D  fu          ☝	finger up
+261E  fr          ☞	finger right
+261F  fd          ☟	finger down
+2620  X(          ☠	skull face
+2622  TF          ☢	trefoil
+262D  SU          ☭	hammer and sickle
+2639  :(          ☹	sad face
+263A  :)          ☺	smiley face
+2640  fs          ♀	female sign
+2642  ms          ♂	male sign
 2654  wk          ♔	white chess king
 2655  wq          ♕	white chess queen
 2656  wr          ♖	white chess rook
@@ -558,11 +579,35 @@
 265D  bb          ♝	black chess bishop
 265E  bn          ♞	black chess knight
 265F  bp          ♟	black chess pawn
+2665  <3          ♥	heart
 2669  M4          ♩	music quarter note
 266a  M8          ♪	music eighth note
 266d  Mb          ♭	music flat
 266e  M#          ♮	music natural
 266f  Ms          ♯	music sharp
+2713  cm          ✓	check mark
+27e8  d<          ⟨	mathematical left angle bracket
+27e9  d>          ⟩	mathematical right angle bracket
+29fa  ++          ⧺	double plus
 F015  ZA          	raw alt (plan 9 specific)
 F016  ZS          	raw shift (plan 9 specific)
 F017  ZC          	raw ctl (plan 9 specific)
+1D538 AA          𝔸	double-struct capital a
+1D539 BB          𝔹	double-struck capital b
+1D53B DD          𝔻	double-struck capital d
+1D53C EE          𝔼	double-struck capital e
+1D53D FF          𝔽	double-struck capital f
+1D53E GG          𝔾	double-struck capital g
+1D540 II          𝕀	double-struck capital i
+1D541 JJ          𝕁	double-struck capital j
+1D542 KK          𝕂	double-struck capital k
+1D543 LL          𝕃	double-struck capital l
+1D544 MM          𝕄	double-struck capital m
+1D546 OO          𝕆	double-struck capital o
+1D54A SS          𝕊	double-struck capital s
+1D54B TT          𝕋	double-struck capital t
+1D54C UU          𝕌	double-struck capital u
+1D54D VV          𝕍	double-struck capital v
+1D54E WW          𝕎	double-struck capital w
+1D54F XX          𝕏	double-struck capital x
+1D550 YY          𝕐	double-struck capital y

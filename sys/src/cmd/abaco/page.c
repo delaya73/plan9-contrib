@@ -73,6 +73,7 @@ static struct {
 	"image/pjpeg",	"jpg -t9",
 	"image/png",	"png -t9",
 	"image/ppm",	"ppm -t9",
+	"image/x-icon", "ico -c",
 	nil,	nil,
 };
 
@@ -93,11 +94,11 @@ getfilter(Rune *r, int x, int y)
 	if(x==0 && y==0)
 		return smprint("%s", filtertab[i].filter);
 	if(x!=0 && y!=0)
-		return smprint("%s | resample -x %d -y %d", filtertab[i].filter, x, y);
+		return smprint("%s | resize -x %d -y %d", filtertab[i].filter, x, y);
 	if(x != 0)
-		return smprint("%s | resample -x %d", filtertab[i].filter, x);
+		return smprint("%s | resize -x %d", filtertab[i].filter, x);
 	/* y != 0 */
-	return smprint("%s | resample -y %d", filtertab[i].filter, y);
+	return smprint("%s | resize -y %d", filtertab[i].filter, y);
 }
 
 static Cimage *cimages = nil;
@@ -150,12 +151,10 @@ static
 Cimage *
 loadimg(Rune *src, int x , int y)
 {
-	Channel *sync;
 	Cimage *ci;
 	Runestr rs;
-	Exec *e;
 	char *filter;
-	int fd, p[2], q[2];
+	int fd;
 
 	ci = emalloc(sizeof(Cimage));
 	rs. r = src;
@@ -173,35 +172,16 @@ loadimg(Rune *src, int x , int y)
 		close(fd);
 		goto Err1;
 	}
-
-	if(pipe(p)<0 || pipe(q)<0)
-		error("can't create pipe");
-	close(p[0]);
-	p[0] = fd;
-	sync = chancreate(sizeof(ulong), 0);
-	if(sync == nil)
-		error("can't create channel");
-	e = emalloc(sizeof(Exec));
-	e->p[0] = p[0];
-	e->p[1] = p[1];
-	e->q[0] = q[0];
-	e->q[1] = q[1];
-	e->cmd = filter;
-	e->sync = sync;
-	proccreate(execproc, e, STACK);
-	recvul(sync);
-	chanfree(sync);
-	close(p[0]);
-	close(p[1]);
-	close(q[1]);
-
-	ci->mi = readmemimage(q[0]);
-	close(q[0]);
+	fd = pipeline(fd, "%s", filter);
+	free(filter);
+	if(fd < 0)
+		goto Err2;
+	ci->mi = readmemimage(fd);
+	close(fd);
 	if(ci->mi == nil){
 		werrstr("can't read image");
 		goto Err2;
 	}
-	free(filter);
 	return ci;
 }
 
@@ -262,7 +242,7 @@ void
 pageloadproc(void *v)
 {
 	Page *p;
-	char buf[BUFSIZE], *s;
+	char buf[BUFSIZE], cs[32], *s;
 	long n, l;
 	int fd, i, ctype;
 
@@ -297,6 +277,16 @@ pageloadproc(void *v)
 		goto Err;
 	}
 	addrefresh(p, "loading: %S...", p->url->src.r);
+
+	s = nil;
+	if(p->url->ctype.nr > 0){
+		snprint(buf, sizeof(buf), "%.*S", p->url->ctype.nr, p->url->ctype.r);
+		if(findctype(cs, sizeof(cs), "charset", buf) == 0)
+			s = cs;
+	}
+	if((fd = pipeline(fd, s != nil ? "uhtml -c %q" : "uhtml", s)) < 0)
+		goto Err;
+
 	s = nil;
 	l = 0;
 	while((n=read(fd, buf, sizeof(buf))) > 0){
@@ -315,7 +305,6 @@ pageloadproc(void *v)
 	close(fd);
 	n = l;
 	if(s){
-		s = convert(p->url->ctype, s, &n);
 		p->items = parsehtml((uchar *)s, n, p->url->act.r, ctype, UTF_8, &p->doc);
 		free(s);
 		fixtext(p);
@@ -559,19 +548,6 @@ static Rune left1[] =  { L'{', L'[', L'(', L'<', L'«', 0 };
 static Rune right1[] = { L'}', L']', L')', L'>', L'»', 0 };
 static Rune left2[] =  { L'\'', L'"', L'`', 0 };
 
-static
-Rune *left[] = {
-	left1,
-	left2,
-	nil
-};
-static
-Rune *right[] = {
-	right1,
-	left2,
-	nil
-};
-
 void
 pagedoubleclick(Page *p)
 {
@@ -723,11 +699,6 @@ pagetype(Page *p, Rune r, Point xy)
 	b = boxwhich(p->lay, xy);
 	if(b && b->key){
 		b->key(b, p, r);
-		return;
-	}
-	/* ^H: same as 'Back' */
-	if(r == 0x08){
-		wingohist(p->w, FALSE);
 		return;
 	}
 

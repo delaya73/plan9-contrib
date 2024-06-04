@@ -25,12 +25,12 @@ newwindow(void)
 }
 
 void
-winsetdump(Window *w, char *dir, char *cmd)
+winsetdir(Window *w, char *dir, char *name)
 {
-	if(dir != nil)
-		ctlprint(w->ctl, "dumpdir %s\n", dir);
-	if(cmd != nil)
-		ctlprint(w->ctl, "dump %s\n", cmd);
+	ctlprint(w->ctl, "dumpdir %s\n", dir);
+	if(strcmp(dir, "/")==0)
+		dir++;
+	ctlprint(w->ctl, "name %s/-%s\n", dir, name);
 }
 
 void
@@ -85,7 +85,7 @@ wingetec(Window *w)
 		w->nbuf = read(w->event, w->buf, sizeof w->buf);
 		if(w->nbuf <= 0){
 			/* probably because window has exited, and only called by wineventproc, so just shut down */
-			threadexits(nil);
+			threadexitsall(nil);
 		}
 		w->bufp = w->buf;
 	}

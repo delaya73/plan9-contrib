@@ -1,20 +1,33 @@
 .TH 9P 2
 .SH NAME
 Srv,
+chatty9p,
 dirread9p,
 emalloc9p,
 erealloc9p,
 estrdup9p,
 listensrv,
-postfd,
 postmountsrv,
+postsharesrv,
+postsrv,
 readbuf,
 readstr,
 respond,
 responderror,
+srv,
+srvacquire,
+srvforker,
+srvrelease,
 threadlistensrv,
 threadpostmountsrv,
-srv \- 9P file service
+threadpostsharesrv,
+threadpostsrv,
+threadsrv,
+threadsrvforker,
+auth9p,
+authattach,
+authread,
+authwrite \- 9P file service
 .SH SYNOPSIS
 .ft L
 .nf
@@ -48,25 +61,32 @@ typedef struct Srv {
 
 	void		(*destroyfid)(Fid *fid);
 	void		(*destroyreq)(Req *r);
+	void		(*start)(Srv *s);
 	void		(*end)(Srv *s);
 	void*	aux;
 
 	int		infd;
 	int		outfd;
-	int		srvfd;
-	int		nopipe;
+
+	void		(*forker)(void (*fn)(void*), void *arg, int flags);
 } Srv;
 .fi
 .PP
 .nf
 .ft L
 .ta \w'\fLvoid* 'u
-int	srv(Srv *s)
+void	srv(Srv *s)
+int	postsrv(Srv *s, char *name);
 void	postmountsrv(Srv *s, char *name, char *mtpt, int flag)
-void	threadpostmountsrv(Srv *s, char *name, char *mtpt, int flag)
+void	postsharesrv(Srv *s, char *name, char *mtpt, char *desc)
 void	listensrv(Srv *s, char *addr)
+void	threadsrv(Srv *s)
+int	threadpostsrv(Srv *s, char *name);
+void	threadpostmountsrv(Srv *s, char *name, char *mtpt, int flag)
+void	threadpostsharesrv(Srv *s, char *name, char *mtpt, char *desc)
 void	threadlistensrv(Srv *s, char *addr)
-int	postfd(char *srvname, int fd)
+void	srvforker(void (*fn)(void*), void *arg, int flags)
+void	threadsrvforker(void (*fn)(void*), void *arg, int flags)
 void	respond(Req *r, char *error)
 void	responderror(Req*)
 void	readstr(Req *r, char *src)
@@ -75,6 +95,15 @@ typedef int Dirgen(int n, Dir *dir, void *aux)
 void		dirread9p(Req *r, Dirgen *gen, void *aux)
 void	walkandclone(Req *r, char *(*walk1)(Fid *old, char *name, void *v),
           char *(*clone)(Fid *old, Fid *new, void *v), void *v)
+.fi
+.PP
+.nf
+.ft L
+.ta \w'\fLvoid* 'u
+void	srvrelease(Srv *s)
+void	srvacquire(Srv *s)
+.fi
+.PP
 .fi
 .PP
 .nf
@@ -89,10 +118,21 @@ char*	estrdup9p(char *s)
 .ft L
 extern int chatty9p;
 .fi
+.PP
+.nf
+.ft L
+.ta \w'\fLvoid* 'u
+void	auth9p(Req *r);
+int		authattach(Req *r);
+void	authread(Req *r);
+void	authwrite(Req *r);
+.fi
 .SH DESCRIPTION
 The function
 .I srv
-serves a 9P session by reading requests from
+and
+.I threadsrv
+serve a 9P session by reading requests from
 .BR s->infd ,
 dispatching them to the function pointers kept in 
 .BR Srv ,
@@ -152,77 +192,116 @@ but abort the program if they run out of memory.
 If alternate behavior is desired, clients can link against
 alternate implementations of these functions.
 .PP
-.I Postmountsrv
+The functions
+.I srvforker
 and
-.I threadpostmountsrv
-are wrappers that create a separate process in which to run
-.IR srv .
-They do the following:
-.IP
-If
-.IB s -> nopipe
-is zero (the common case),
-initialize
-.IB s -> infd
-and
-.IB s -> outfd
-to be one end of a freshly allocated pipe,
-with
-.IB s -> srvfd
-initialized as the other end.
-.IP
-If
-.B name
-is non-nil, call
-.BI postfd( s -> srvfd ,
-.IB name )
-to post
-.IB s -> srvfd
-as
-.BI /srv/ name .
-.IP
-Fork a child process via
+.I threadsrvforker
+handle the creation of new processes on a connection which use
 .I rfork
 (see
 .IR fork (2))
 or
 .I procrfork
 (see
-.IR thread (2)),
-using the
-.BR RFFDG ,
-.RR RFNOTEG ,
-.BR RFNAMEG ,
+.IR thread (2)).
+.PP
+
+.I Postsrv
 and
-.BR RFMEM
-flags.
-The child process
-calls
-.IB close( s -> srvfd )
-and then
-.IB srv( s ) \fR;
-it will exit once
-.I srv
-returns.
+.I threadpostsrv
+are wrappers that create a separate process in which to run
+.IR srv .
+They do the following:
+.IP
+Initialize
+.IB s -> infd
+and
+.IB s -> outfd
+to be one end of a freshly allocated pipe.
 .IP
 If
+.B name
+is non-nil, post the other end file descriptor under the name
+.BI /srv/ name .
+.IP
+Initialize
+.IB s -> forker
+to either
+.I srvforker
+or
+.I threadsrvforker
+unless already initialized to a non-nil value.
+.IP
+Fork a child process via
+.IB s -> forker
+using the
+.BR RFPROC ,
+.BR RFNOWAIT ,
+.BR RFNAMEG ,
+.B RFNOTEG
+and
+.B RFMEM
+flags. This isolates the service loop from the callers
+namespace and from notes posted to the callers note group
+but shares data and bss segments.
+.IP
+The child process then waits for the parent to copy its
+file descriptor table via
+.I rfork
+using
+.B RFFDG
+flag. This way, the service loop will share the original
+file descriptor table with previously created child
+processes of the caller.
+.IP
+The child process then closes the other end file descriptor
+and calls
+.IR srv .
+.IP
+The parent process returns from the function with the
+mountable file descriptor
+.IR sfd .
+On error,
+.I postsrv
+and
+.I threadpostsrv
+return a file descriptor of
+.BR -1
+with error string set.
+.PP
+.I Postmountsrv
+and
+.I threadpostmntsrv
+call
+.I postsrv
+with
+.I name
+and then if
 .I mtpt
 is non-nil,
 call
-.BI amount( s -> srvfd,
+.BI amount( sfd ,
 .IB mtpt ,
 .IB flag ,
 \fB"")\fR;
-otherwise, close
-.IB s -> srvfd \fR.
-.IP
-The parent returns to the caller.
-.LP
+otherwise, close the file descriptor.
 If any error occurs during
 this process, the entire process is terminated by calling
 .I sysfatal
 (see
 .IR perror (2)).
+.PP
+.I Postsharesrv
+is similar to
+.I Postmountsrv
+but instead of mounting the service on a directory, it is
+put in a share (see
+.IR shr (3))
+where
+.IB mtpt
+is the name of the share and
+.IB desc
+is the name of the service channel.
 .PP
 .I Listensrv
 and
@@ -332,7 +411,17 @@ and
 is single-threaded.
 If it is expected that some requests might
 block, arranging for alternate processes
-to handle them is suggested.
+to handle them is suggested (see
+.IR 9pqueue (2)).
+.PP
+.I Srvrelease
+temporarily releases the calling process from the server
+loop and if neccesary spawns a new process to handle 9p 
+requests. When released, the process can do blocking work
+that would otherwise halt processing of 9p requests.
+.I Srvacquire
+rejoins the calling process with the server loop after
+a srvrelease.
 .PP
 The constraints on the service functions are as follows.
 These constraints are checked while the server executes.
@@ -422,7 +511,7 @@ prone to error, the helper routine
 will handle the request given pointers to two functions
 .I walk1
 and (optionally)
-.I clone .
+.IR clone .
 .IR Clone ,
 if non-nil, is called to signal the creation of
 .I newfid
@@ -626,7 +715,7 @@ itself may be nil.
 .I Wstat
 The
 .I wstat
-consults 
+function consults 
 .IB r -> d
 in changing the metadata for
 .IB r -> fid
@@ -685,6 +774,7 @@ has been sent.
 .PP
 .IR Destroyfid ,
 .IR destroyreq ,
+.IR start ,
 and
 .I end
 are auxiliary functions, not called in direct response to 9P requests.
@@ -715,6 +805,10 @@ is called to allow the program to dispose of the
 .IB r -> aux
 pointer.
 .TP
+.I Start
+This gets called (from the forked service process) 
+prior entering the 9P service loop.
+.TP
 .I End
 Once the 9P service loop has finished
 (end of file been reached on the service pipe
@@ -732,6 +826,40 @@ from its caller) terminates using
 (see
 .IR exits (2)).
 .PD
+.PP
+.I Auth9p,
+.I authattach,
+.I authwrite,
+and
+.I authread
+are functions to assist in the creation of authenticated
+file servers.
+.I Auth9p
+sets
+.I afid
+to point to
+.B /mnt/factotum/rpc
+then calls
+.I respond.
+It can be used as the
+.I auth
+service function address.
+.I Authattach
+will return 0 if the session has properly
+authenticated or will return -1 and
+call
+.I respond
+with an apropiate error.
+.I Authread
+and
+.I authwrite
+can be called from the
+.I read
+and
+.I write
+service functions respectfully to handle
+calls on the
+.I afid.
 .PP
 If the 
 .B chatty9p
@@ -753,14 +881,8 @@ option to increment
 .IR nntpfs (4),
 .IR snap (4),
 and
-.B /sys/src/lib9p/ramfs.c
+.B /sys/src/cmd/ramfs.c
 are good examples of simple single-threaded file servers.
-.IR Webfs (4)
-and
-.I sshnet
-(see
-.IR ssh (1))
-are good examples of multithreaded file servers.
 .PP
 In general, the
 .B File
@@ -780,7 +902,9 @@ or is maintained elsewhere.
 .SH SEE ALSO
 .IR 9pfid (2),
 .IR 9pfile (2),
+.IR 9pqueue (2),
 .IR srv (3),
+.IR shr (3),
 .IR intro (5)
 .SH BUGS
 The switch to 9P2000 was taken as an opportunity to tidy

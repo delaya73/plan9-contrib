@@ -18,6 +18,7 @@ Cmdtab cmdtab[]={
 	'i',	1,	0,	0,	0,	aDot,	0,	0,	i_cmd,
 	'k',	0,	0,	0,	0,	aDot,	0,	0,	k_cmd,
 	'm',	0,	0,	1,	0,	aDot,	0,	0,	m_cmd,
+	'M',	0,	0,	0,	0,	aNo,	0,	linex,	M_cmd,
 	'n',	0,	0,	0,	0,	aNo,	0,	0,	n_cmd,
 	'p',	0,	0,	0,	0,	aDot,	0,	0,	p_cmd,
 	'q',	0,	0,	0,	0,	aNo,	0,	0,	q_cmd,
@@ -35,6 +36,8 @@ Cmdtab cmdtab[]={
 	'>',	0,	0,	0,	0,	aDot,	0,	linex,	plan9_cmd,
 	'<',	0,	0,	0,	0,	aDot,	0,	linex,	plan9_cmd,
 	'|',	0,	0,	0,	0,	aDot,	0,	linex,	plan9_cmd,
+	'^',	0,	0,	0,	0,	aNo,	0,	linex,	plan9_cmd,
+	'_',	0,	0,	0,	0,	aDot,	0,	linex,	plan9_cmd,
 	'=',	0,	0,	0,	0,	aDot,	0,	linex,	eq_cmd,
 	'c'|0x100,0,	0,	0,	0,	aNo,	0,	wordx,	cd_cmd,
 	0,	0,	0,	0,	0,	0,	0,	0,
@@ -76,7 +79,13 @@ inputc(void)
 
     Again:
 	nbuf = 0;
-	if(downloaded){
+	if(cmdbufpos > cmdbuf.nc && cmdbuf.nc > 0){
+		cmdbufpos = 0;
+		bufreset(&cmdbuf);
+	}
+	if(cmdbufpos < cmdbuf.nc && cmdbuf.nc > 0)
+		bufread(&cmdbuf, cmdbufpos++, &r, 1);
+	else if(downloaded){
 		while(termoutp == terminp){
 			cmdupdate();
 			if(patset)

@@ -2,12 +2,14 @@
 
 #define	RUNESIZE	sizeof(Rune)
 #define	MAXFILES	256
-#define	READBUFSIZE (16*1024)
+#define	READBUFSIZE 8192
 #define	NL	5
 
 enum{
 	Up,
-	Down
+	Down,
+
+	Kbel=0x7,
 };
 
 typedef struct Text	Text;
@@ -86,6 +88,7 @@ extern int	hversion;
 extern int	plumbfd;
 extern int	exiting;
 extern int	autoindent;
+extern int	spacesindent;
 
 Rune	*gettext(Flayer*, long, ulong*);
 void	*alloc(ulong n);
@@ -100,7 +103,6 @@ void	startnewfile(int, Text*);
 void	getmouse(void);
 void	mouseunblock(void);
 void	kbdblock(void);
-void	extstart(void);
 void	hoststart(void);
 int	plumbstart(void);
 int	button(int but);
@@ -144,6 +146,7 @@ void	menuins(int, uchar*, Text*, int, int);
 void	menudel(int);
 Text	*sweeptext(int, int);
 void	setpat(char*);
+void	menucmd(char*);
 void	scrdraw(Flayer*, long tot);
 int	rcontig(Rasp*, ulong, ulong, int);
 int	rmissing(Rasp*, ulong, ulong);

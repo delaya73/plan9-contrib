@@ -26,7 +26,7 @@ cmdexec(File *f, Cmd *cp)
 	if(f && f->unread)
 		load(f);
 	if(f==0 && (cp->addr==0 || cp->addr->type!='"') &&
-	    !utfrune("bBnqUXY!", cp->cmdc) &&
+	    !utfrune("bBnqUXY!^M", cp->cmdc) &&
 	    cp->cmdc!=('c'|0x100) && !(cp->cmdc=='D' && cp->ctext))
 		error(Enofile);
 	i = lookup(cp->cmdc);
@@ -167,6 +167,17 @@ m_cmd(File *f, Cmd *cp)
 }
 
 int
+M_cmd(File *f, Cmd *cp)
+{
+	USED(f);
+	if(downloaded)
+		outTS(Hmenucmd, cp->ctext);
+	else
+		dprint("not downloaded\n");
+	return TRUE;
+}
+
+int
 n_cmd(File *f, Cmd *cp)
 {
 	int i;
@@ -277,6 +288,7 @@ u_cmd(File *f, Cmd *cp)
 	else
 		while(n++ && undo(FALSE))
 			;
+	moveto(f, f->dot.r);
 	return TRUE;
 }
 

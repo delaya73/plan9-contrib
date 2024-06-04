@@ -1,9 +1,9 @@
 #include <u.h>
 #include <libc.h>
-#include <auth.h>
 #include <fcall.h>
 #include <thread.h>
 #include <9p.h>
+#include <auth.h>
 
 typedef struct Afid Afid;
 
@@ -25,7 +25,7 @@ auth9p(Req *r)
 	Afid *afid;
 	
 	afid = emalloc9p(sizeof(Afid));
-	afid->afd = open("/mnt/factotum/rpc", ORDWR);
+	afid->afd = open("/mnt/factotum/rpc", ORDWR|OCEXEC);
 	if(afid->afd < 0)
 		goto error;
 

@@ -1,15 +1,10 @@
-#ifdef	PLAN9
 #include	<u.h>
 #include	<libc.h>
 #include	<bio.h>
-#else
-#include	<stdio.h>
-#include	<unistd.h>
-#include	"plan9.h"
-#endif
 #include	"hdr.h"
 #include	"conv.h"
 #include	"kuten208.h"
+#include	"kuten212.h"
 #include	"jis.h"
 
 /*
@@ -46,7 +41,7 @@ again:
 		}
 		if(c < 0x21){	/* guard against bogus characters in JIS mode */
 			if(squawk)
-				EPR "%s: non-JIS character %02x in %s near byte %ld\n", argv0, c, file, input_loc);
+				warn("non-JIS character %02x in %s near byte %ld", c, file, input_loc);
 			emit(c);
 			return;
 		}
@@ -73,7 +68,7 @@ again:
 	case state4:	/* two part char */
 		if(c < 0){
 			if(squawk)
-				EPR "%s: unexpected EOF in %s\n", argv0, file);
+				warn("unexpected EOF in %s", file);
 			c = 0x21 | (lastc&0x80);
 		}
 		if(CANS2J(lastc, c)){	/* ms dos sjis */
@@ -85,14 +80,14 @@ again:
 		if((n >= KUTEN208MAX) || ((l = tabkuten208[n]) == -1)){
 			nerrors++;
 			if(squawk)
-				EPR "%s: unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s\n", argv0, n, lastc, c, input_loc, file);
+				warn("unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s", n, lastc, c, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 		} else {
 			if(l < 0){
 				l = -l;
 				if(squawk)
-					EPR "%s: ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s\n", argv0, n, l, input_loc, file);
+					warn("ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s", n, l, input_loc, file);
 			}
 			emit(l);
 		}
@@ -132,6 +127,10 @@ again:
 				return;
 			}
 		}
+		if(!set8 && c >= 161 && c <= 223){
+			emit(0xFEC0 + c);
+			return;
+		}
 		lastc = c; state = state4; return;
 
 	case state1:	/* seen an escape */
@@ -155,7 +154,7 @@ again:
 	case state4:	/* two part char */
 		if(c < 0){
 			if(squawk)
-				EPR "%s: unexpected EOF in %s\n", argv0, file);
+				warn("unexpected EOF in %s", file);
 			c = 0x21 | (lastc&0x80);
 		}
 		if(CANS2J(lastc, c)){	/* ms dos sjis */
@@ -165,7 +164,7 @@ again:
 		} else {
 			nerrors++;
 			if(squawk)
-				EPR "%s: illegal byte pair (0x%x,0x%x) near byte %ld in %s\n", argv0, lastc, c, input_loc, file);
+				warn("illegal byte pair (0x%x,0x%x) near byte %ld in %s", lastc, c, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 			state = state0;
@@ -174,14 +173,14 @@ again:
 		if((n >= KUTEN208MAX) || ((l = tabkuten208[n]) == -1)){
 			nerrors++;
 			if(squawk)
-				EPR "%s: unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s\n", argv0, n, lastc, c, input_loc, file);
+				warn("unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s", n, lastc, c, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 		} else {
 			if(l < 0){
 				l = -l;
 				if(squawk)
-					EPR "%s: ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s\n", argv0, n, l, input_loc, file);
+					warn("ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s", n, l, input_loc, file);
 			}
 			emit(l);
 		}
@@ -195,7 +194,7 @@ again:
 static void
 ujis(int c, Rune **r, long input_loc)
 {
-	static enum { state0, state1 } state = state0;
+	static enum { state0, state1, state2, state3 } state = state0;
 	static int lastc;
 	int n;
 	long l;
@@ -211,45 +210,91 @@ ujis(int c, Rune **r, long input_loc)
 		if(c == 0x8e){	/* codeset 2 */
 			nerrors++;
 			if(squawk)
-				EPR "%s: unknown codeset 2 near byte %ld in %s\n", argv0, input_loc, file);
+				warn("unknown codeset 2 near byte %ld in %s", input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 			return;
 		}
-		if(c == 0x8f){	/* codeset 3 */
-			nerrors++;
-			if(squawk)
-				EPR "%s: unknown codeset 3 near byte %ld in %s\n", argv0, input_loc, file);
-			if(!clean)
-				emit(BADMAP);
-			return;
+		if(c == 0x8f)	/* codeset 3 */
+			state = state2;
+		else{
+			lastc = c;
+			state = state1;
 		}
-		lastc = c;
-		state = state1;
 		return;
 
 	case state1:	/* two part char */
 		if(c < 0){
 			if(squawk)
-				EPR "%s: unexpected EOF in %s\n", argv0, file);
+				warn("unexpected EOF in %s", file);
 			c = 0xA1;
 		}
 		n = (lastc&0x7F)*100 + (c&0x7F) - 3232;	/* kuten208 */
 		if((n >= KUTEN208MAX) || ((l = tabkuten208[n]) == -1)){
 			nerrors++;
 			if(squawk)
-				EPR "%s: unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s\n", argv0, n, lastc, c, input_loc, file);
+				warn("unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s", n, lastc, c, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 		} else {
 			if(l < 0){
 				l = -l;
 				if(squawk)
-					EPR "%s: ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s\n", argv0, n, l, input_loc, file);
+					warn("ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s", n, l, input_loc, file);
 			}
 			emit(l);
 		}
 		state = state0;
+		return;
+	
+	case state2:	/* three part char, part #2 */
+		if(c < 0){
+			if(squawk)
+				warn("unexpected EOF in %s\n", argv0, file);
+			c = 0xA1;
+		}
+		if(c < 0xa1 || c > 0xfe){
+			if(squawk)
+				warn("invalid byte 0x%x in codeset 3\n", argv0, c);
+			state = state0;
+		}else{
+			lastc = c;
+			state = state3;
+		}
+		return;
+
+	case state3:	/* three part char, part #3 */
+		if(c < 0){
+			if(squawk)
+				warn("unexpected EOF in %s\n", argv0, file);
+			c = 0xA1;
+		}
+		if(c < 0xa1 || c > 0xfe){
+			if(squawk)
+				warn("invalid byte 0x%x in codeset 3\n", argv0, c);
+			state = state0;
+			return;
+		}
+		
+		n = (lastc&0x7F)*100 + (c&0x7F) - 3232;	/* kuten212 */
+		if((n >= KUTEN212MAX) || ((l = tabkuten212[n]) == -1)){
+			nerrors++;
+			if(squawk)
+				warn("unknown kuten212 %d (from 0x%x,0x%x) near byte %ld in %s\n", argv0, n, lastc, c, input_loc, file);
+			if(!clean)
+				emit(BADMAP);
+		} else {
+			if(l < 0){
+				l = -l;
+				if(squawk)
+					warn("ambiguous kuten212 %d (mapped to 0x%lx) near byte %ld in %s\n", argv0, n, l, input_loc, file);
+			}
+			emit(l);
+		}
+		state = state0;
+		return;
+		
+		
 	}
 }
 
@@ -308,7 +353,7 @@ again:
 	case state4:	/* two part char */
 		if(c < 0){
 			if(squawk)
-				EPR "%s: unexpected EOF in %s\n", argv0, file);
+				warn("unexpected EOF in %s", file);
 			c = 0x21 | (lastc&0x80);
 		}
 		if((lastc&0x80) != (c&0x80)){	/* guard against latin1 in jis */
@@ -320,14 +365,14 @@ again:
 		if((n >= KUTEN208MAX) || ((l = tabkuten208[n]) == -1)){
 			nerrors++;
 			if(squawk)
-				EPR "%s: unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s\n", argv0, n, lastc, c, input_loc, file);
+				warn("unknown kuten208 %d (from 0x%x,0x%x) near byte %ld in %s", n, lastc, c, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 		} else {
 			if(l < 0){
 				l = -l;
 				if(squawk)
-					EPR "%s: ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s\n", argv0, n, l, input_loc, file);
+					warn("ambiguous kuten208 %d (mapped to 0x%lx) near byte %ld in %s", n, l, input_loc, file);
 			}
 			emit(l);
 		}
@@ -367,30 +412,26 @@ do_in(int fd, void (*procfn)(int, Rune **, long), struct convert *out)
 }
 
 void
-jis_in(int fd, long *notused, struct convert *out)
+jis_in(int fd, long *, struct convert *out)
 {
-	USED(notused);
 	do_in(fd, alljis, out);
 }
 
 void
-ujis_in(int fd, long *notused, struct convert *out)
+ujis_in(int fd, long *, struct convert *out)
 {
-	USED(notused);
 	do_in(fd, ujis, out);
 }
 
 void
-msjis_in(int fd, long *notused, struct convert *out)
+msjis_in(int fd, long *, struct convert *out)
 {
-	USED(notused);
 	do_in(fd, ms, out);
 }
 
 void
-jisjis_in(int fd, long *notused, struct convert *out)
+jisjis_in(int fd, long *, struct convert *out)
 {
-	USED(notused);
 	do_in(fd, jis, out);
 }
 
@@ -417,14 +458,13 @@ tab_init(void)
 
 /*	jis-kanji, or ISO 2022-JP	*/
 void
-jisjis_out(Rune *base, int n, long *notused)
+jisjis_out(Rune *base, int n, long *)
 {
 	char *p;
 	int i;
 	Rune r;
 	static enum { ascii, japan646, jp2022 } state = ascii;
 
-	USED(notused);
 	if(first)
 		tab_init();
 	nrunes += n;
@@ -438,7 +478,7 @@ jisjis_out(Rune *base, int n, long *notused)
 			}
 			*p++ = r;
 		} else {
-			if(tab[r] != -1){
+			if(r < NRUNE && tab[r] != -1){
 				if(state != jp2022){
 					*p++ = ESC; *p++ = '$'; *p++ = 'B';
 					state = jp2022;
@@ -448,7 +488,7 @@ jisjis_out(Rune *base, int n, long *notused)
 				continue;
 			}
 			if(squawk)
-				EPR "%s: rune 0x%x not in output cs\n", argv0, r);
+				warn("rune 0x%x not in output cs", r);
 			nerrors++;
 			if(clean)
 				continue;
@@ -462,13 +502,12 @@ jisjis_out(Rune *base, int n, long *notused)
 
 /*	ms-kanji, or Shift-JIS	*/
 void
-msjis_out(Rune *base, int n, long *notused)
+msjis_out(Rune *base, int n, long *)
 {
 	char *p;
 	int i, hi, lo;
 	Rune r;
 
-	USED(notused);
 	if(first)
 		tab_init();
 	nrunes += n;
@@ -478,7 +517,7 @@ msjis_out(Rune *base, int n, long *notused)
 		if(r < 128)
 			*p++ = r;
 		else {
-			if(tab[r] != -1){
+			if(r < NRUNE && tab[r] != -1){
 				hi = tab[r]/100 + ' ';
 				lo = tab[r]%100 + ' ';
 				J2S(hi, lo);
@@ -487,7 +526,7 @@ msjis_out(Rune *base, int n, long *notused)
 				continue;
 			}
 			if(squawk)
-				EPR "%s: rune 0x%x not in output cs\n", argv0, r);
+				warn("rune 0x%x not in output cs", r);
 			nerrors++;
 			if(clean)
 				continue;
@@ -501,13 +540,12 @@ msjis_out(Rune *base, int n, long *notused)
 
 /*	ujis, or EUC	*/
 void
-ujis_out(Rune *base, int n, long *notused)
+ujis_out(Rune *base, int n, long *)
 {
 	char *p;
 	int i;
 	Rune r;
 
-	USED(notused);
 	if(first)
 		tab_init();
 	nrunes += n;
@@ -517,13 +555,13 @@ ujis_out(Rune *base, int n, long *notused)
 		if(r < 128)
 			*p++ = r;
 		else {
-			if(tab[r] != -1){
+			if(r < NRUNE && tab[r] != -1){
 				*p++ = 0x80 | (tab[r]/100 + ' ');
 				*p++ = 0x80 | (tab[r]%100 + ' ');
 				continue;
 			}
 			if(squawk)
-				EPR "%s: rune 0x%x not in output cs\n", argv0, r);
+				warn("rune 0x%x not in output cs", r);
 			nerrors++;
 			if(clean)
 				continue;

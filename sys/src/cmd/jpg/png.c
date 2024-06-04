@@ -3,6 +3,7 @@
 #include <bio.h>
 #include <draw.h>
 #include <event.h>
+#include <keyboard.h>
 #include "imagefile.h"
 
 extern int	debug;
@@ -11,7 +12,6 @@ int	dflag = 0;
 int	eflag = 0;
 int	nineflag = 0;
 int	threeflag = 0;
-int	colorspace = CRGB;
 int	output = 0;
 ulong	outchan = CMAP8;
 Image	*image;
@@ -24,6 +24,16 @@ enum{
 
 char	*show(int, char*, int);
 
+Rectangle
+imager(Image *i)
+{
+	Point p1, p2;
+
+	p1 = addpt(divpt(subpt(i->r.max, i->r.min), 2), i->r.min);
+	p2 = addpt(divpt(subpt(screen->clipr.max, screen->clipr.min), 2), screen->clipr.min);
+	return rectaddpt(i->r, subpt(p2, p1));
+}
+
 void
 eresized(int new)
 {
@@ -35,9 +45,7 @@ eresized(int new)
 	}
 	if(image == nil)
 		return;
-	r = insetrect(screen->clipr, Edge+Border);
-	r.max.x = r.min.x+Dx(image->r);
-	r.max.y = r.min.y+Dy(image->r);
+	r = imager(image);
 	border(screen, r, -Border, nil, ZP);
 	draw(screen, r, image, nil, image->r.min);
 	flushimage(display, 1);
@@ -48,7 +56,6 @@ main(int argc, char *argv[])
 {
 	int fd, i;
 	char *err;
-	char buf[12+1];
 
 	ARGBEGIN{
 	case 'c':		/* produce encoded, compressed, bitmap file; no display by default */
@@ -70,9 +77,6 @@ main(int argc, char *argv[])
 	case 'k':		/* force black and white */
 		defaultcolor = 0;
 		outchan = GREY8;
-		break;
-	case 'r':
-		colorspace = CRGB;
 		break;
 	case '3':		/* produce encoded, compressed, three-color bitmap file; no display by default */
 		threeflag++;
@@ -99,16 +103,6 @@ main(int argc, char *argv[])
 		fprint(2, "usage: png [-39cdekrtv] [file.png ...]\n");
 		exits("usage");
 	}ARGEND;
-
-	if(dflag==0 && colorspace==CYCbCr){	/* see if we should convert right to RGB */
-		fd = open("/dev/screen", OREAD);
-		if(fd > 0){
-			buf[12] = '\0';
-			if(read(fd, buf, 12)==12 && chantodepth(strtochan(buf))>8)
-				colorspace = CRGB;
-			close(fd);
-		}
-	}
 
 	err = nil;
 	if(argc == 0)
@@ -138,7 +132,6 @@ show(int fd, char *name, int outc)
 	Rawimage **array, *r, *c;
 	Image *i, *i2;
 	int j, ch, outchan;
-	long len;
 	Biobuf b;
 	char buf[32];
 	static int inited;
@@ -146,7 +139,7 @@ show(int fd, char *name, int outc)
 	if(Binit(&b, fd, OREAD) < 0)
 		return nil;
 	outchan = outc;
-	array = Breadpng(&b, colorspace);
+	array = Breadpng(&b, CRGB);
 	if(array == nil || array[0]==nil){
 		fprint(2, "png: decode %s failed: %r\n", name);
 		return "decode";
@@ -205,7 +198,7 @@ show(int fd, char *name, int outc)
 		draw(i2, i2->r, i, nil, i->r.min);
 		image = i2;
 		eresized(0);
-		if((ch=ekbd())=='q' || ch==0x7F || ch==0x04)
+		if((ch=ekbd())=='q' || ch==Kdel || ch==Keof)
 			exits(nil);
 		draw(screen, screen->clipr, display->white, nil, ZP);
 		image = nil;
@@ -213,24 +206,6 @@ show(int fd, char *name, int outc)
 	}
 	if(nineflag){
 		chantostr(buf, outchan);
-		len = (c->r.max.x - c->r.min.x) * (c->r.max.y - c->r.min.y);
-		switch(c->chandesc){
-		case CY:
-			// len *= 1;
-			break;
-		case CYA16:
-			len *= 2;
-			break;
-		case CRGB24:
-			len *= 3;
-			break;
-		case CRGBA32:
-			len *= 4;
-			break;
-		}
-		if(c->chanlen != len)
-			fprint(2, "%s: writing %d bytes for len %ld chan %s\n",
-				argv0, c->chanlen, len, buf);
 		print("%11s %11d %11d %11d %11d ", buf,
 			c->r.min.x, c->r.min.y, c->r.max.x, c->r.max.y);
 		if(write(1, c->chans[0], c->chanlen) != c->chanlen){

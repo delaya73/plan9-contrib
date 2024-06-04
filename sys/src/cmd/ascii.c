@@ -15,7 +15,7 @@ int	isnum(char *);
 
 char *str[256]={
 	"nul",	"soh",	"stx",	"etx",	"eot",	"enq",	"ack",	"bel",
-	"bs ",	"ht ",	"nl ",	"vt ",	"np ",	"cr ",	"so ",	"si ",
+	"bs ",	"ht ",	"nl ",	"vt ",	"ff ",	"cr ",	"so ",	"si ",
 	"dle",	"dc1",	"dc2",	"dc3",	"dc4",	"nak",	"syn",	"etb",
 	"can",	"em ",	"sub",	"esc",	"fs ",	"gs ",	"rs ",	"us ",
 	"sp ",	" ! ",	" \" ",	" # ",	" $ ",	" % ",	" & ",	" ' ",
@@ -169,7 +169,7 @@ value(int c, int f)
 		return(-1);
 	fprint(2, "%s: bad input char %c\n", argv0, c);
 	exits("bad");
-	return 0;	/* to keep ken happy */
+	return 0;       /* to keep ken happy */
 }
 int
 isnum(char *s)

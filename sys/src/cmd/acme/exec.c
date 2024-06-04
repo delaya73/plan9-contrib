@@ -73,7 +73,7 @@ Exectab exectab[] = {
 	{ L"Get",		get,		FALSE,	TRUE,	XXX		},
 	{ L"ID",		id,		FALSE,	XXX,		XXX		},
 	{ L"Incl",		incl,		FALSE,	XXX,		XXX		},
-	{ L"Indent",	indent,	FALSE,	XXX,		XXX		},
+	{ L"Indent",	indent,		FALSE,	AUTOINDENT,		XXX		},
 	{ L"Kill",		kill,		FALSE,	XXX,		XXX		},
 	{ L"Load",		dump,	FALSE,	FALSE,	XXX		},
 	{ L"Local",		local,	FALSE,	XXX,		XXX		},
@@ -87,6 +87,7 @@ Exectab exectab[] = {
 	{ L"Send",		sendx,	TRUE,	XXX,		XXX		},
 	{ L"Snarf",		cut,		FALSE,	TRUE,	FALSE	},
 	{ L"Sort",		sort,		FALSE,	XXX,		XXX		},
+	{ L"Spaces",	indent,		FALSE,	SPACESINDENT,	XXX		},
 	{ L"Tab",		tab,		FALSE,	XXX,		XXX		},
 	{ L"Undo",		undo,	FALSE,	TRUE,	XXX		},
 	{ L"Zerox",	zeroxx,	FALSE,	XXX,		XXX		},
@@ -146,6 +147,8 @@ execute(Text *t, uint aq0, uint aq1, int external, Text *argt)
 	}
 	r = runemalloc(q1-q0);
 	bufread(t->file, q0, r, q1-q0);
+	free(delcmd);
+	delcmd = runesmprint("%.*S", q1-q0, r);
 	e = lookup(r, q1-q0);
 	if(!external && t->w!=nil && t->w->nopen[QWevent]>0){
 		f = 0;
@@ -158,6 +161,7 @@ execute(Text *t, uint aq0, uint aq1, int external, Text *argt)
 		aa = getbytearg(argt, TRUE, TRUE, &a);
 		if(a){	
 			if(strlen(a) > EVENTSIZE){	/* too big; too bad */
+				free(r);
 				free(aa);
 				free(a);
 				warning(nil, "`argument string too long\n");
@@ -293,10 +297,14 @@ void
 newcol(Text *et, Text*, Text*, int, int, Rune*, int)
 {
 	Column *c;
+	Window *w;
 
 	c = rowadd(et->row, nil, -1);
-	if(c)
-		winsettag(coladd(c, nil, nil, -1));
+	if(c) {
+		w = coladd(c, nil, nil, -1);
+		winsettag(w);
+		xfidlog(w, "new");
+	}
 }
 
 void
@@ -344,8 +352,7 @@ del(Text *et, Text*, Text *argt, int flag1, int, Rune *arg, int narg)
 			pm->ndata = strlen(pm->data);
 			if(pm->ndata < messagesize-1024)
 				plumbsend(plumbsendfd, pm);
-			else
-				plumbfree(pm);
+			plumbfree(pm);
 		}
 		colclose(et->col, et->w, TRUE);
 	}
@@ -492,10 +499,21 @@ zeroxx(Text *et, Text *t, Text*, int, int, Rune*, int)
 		nw = coladd(t->w->col, nil, t->w, -1);
 		/* ugly: fix locks so w->unlock works */
 		winlock1(nw, t->w->owner);
+		xfidlog(nw, "zerox");
 	}
 	if(locked)
 		winunlock(t->w);
 }
+
+typedef struct TextAddr TextAddr;
+struct TextAddr {
+	long lorigin; // line+rune for origin
+	long rorigin;
+	long lq0; // line+rune for q0
+	long rq0;
+	long lq1; // line+rune for q1
+	long rq1;
+};
 
 void
 get(Text *et, Text *t, Text *argt, int flag1, int, Rune *arg, int narg)
@@ -503,9 +521,11 @@ get(Text *et, Text *t, Text *argt, int flag1, int, Rune *arg, int narg)
 	char *name;
 	Rune *r;
 	int i, n, dirty, samename, isdir;
+	TextAddr *addr, *a;
 	Window *w;
 	Text *u;
 	Dir *d;
+	long q0, q1;
 
 	if(flag1)
 		if(et==nil || et->w==nil)
@@ -527,6 +547,14 @@ get(Text *et, Text *t, Text *argt, int flag1, int, Rune *arg, int narg)
 			warning(nil, "%s is a directory; can't read with multiple windows on it\n", name);
 			return;
 		}
+	}
+	addr = emalloc((t->file->ntext)*sizeof(TextAddr));
+	for(i=0; i<t->file->ntext; i++) {
+		a = &addr[i];
+		u = t->file->text[i];
+		a->lorigin = nlcount(u, 0, u->org, &a->rorigin);
+		a->lq0 = nlcount(u, 0, u->q0, &a->rq0);
+		a->lq1 = nlcount(u, u->q0, u->q1, &a->rq1);
 	}
 	r = bytetorune(name, &n);
 	for(i=0; i<t->file->ntext; i++){
@@ -553,8 +581,19 @@ get(Text *et, Text *t, Text *argt, int flag1, int, Rune *arg, int narg)
 	for(i=0; i<t->file->ntext; i++){
 		u = t->file->text[i];
 		textsetselect(&u->w->tag, u->w->tag.file->nc, u->w->tag.file->nc);
+		if(samename) {
+			a = &addr[i];
+			// warning(nil, "%d %d %d %d %d %d\n", a->lorigin, a->rorigin, a->lq0, a->rq0, a->lq1, a->rq1);
+			q0 = nlcounttopos(u, 0, a->lq0, a->rq0);
+			q1 = nlcounttopos(u, q0, a->lq1, a->rq1);
+			textsetselect(u, q0, q1);
+			q0 = nlcounttopos(u, 0, a->lorigin, a->rorigin);
+			textsetorigin(u, q0, FALSE);
+		}
 		textscrdraw(u);
 	}
+	free(addr);
+	xfidlog(w, "get");
 }
 
 void
@@ -602,10 +641,10 @@ putfile(File *f, int q0, int q1, Rune *namer, int nname)
 
 	for(q=q0; q<q1; q+=n){
 		n = q1 - q;
-		if(n > BUFSIZE/UTFmax)
-			n = BUFSIZE/UTFmax;
+		if(n > (BUFSIZE-1)/UTFmax)
+			n = (BUFSIZE-1)/UTFmax;
 		bufread(f, q, r, n);
-		m = snprint(s, BUFSIZE+1, "%.*S", n, r);
+		m = snprint(s, BUFSIZE, "%.*S", n, r);
 		if(write(fd, s, m) != m){
 			warning(nil, "can't write file %s: %r\n", name);
 			goto Rescue2;
@@ -647,8 +686,7 @@ putfile(File *f, int q0, int q1, Rune *namer, int nname)
 		pm->ndata = strlen(pm->data);
 		if(pm->ndata < messagesize-1024)
 			plumbsend(plumbsendfd, pm);
-		else
-			plumbfree(pm);
+		plumbfree(pm);
 	}
 	fbuffree(s);
 	fbuffree(r);
@@ -691,6 +729,7 @@ put(Text *et, Text*, Text *argt, int, int, Rune *arg, int narg)
 	}
 	namer = bytetorune(name, &nname);
 	putfile(f, 0, f->nc, namer, nname);
+	xfidlog(w, "put");
 	free(name);
 }
 
@@ -1087,57 +1126,65 @@ incl(Text *et, Text*, Text *argt, int, int, Rune *arg, int narg)
 enum {
 	IGlobal = -2,
 	IError = -1,
-	Ion = 0,
-	Ioff = 1,
 };
 
 static int
-indentval(Rune *s, int n)
+indentval(Rune *s, int n, int type)
 {
+	static char *strs[] = {
+		[SPACESINDENT] "Spaces",
+		[AUTOINDENT] "Indent",
+	};
+
 	if(n < 2)
 		return IError;
 	if(runestrncmp(s, L"ON", n) == 0){
-		globalautoindent = TRUE;
-		warning(nil, "Indent ON\n");
+		globalindent[type] = TRUE;
+		warning(nil, "%s ON\n", strs[type]);
 		return IGlobal;
 	}
 	if(runestrncmp(s, L"OFF", n) == 0){
-		globalautoindent = FALSE;
-		warning(nil, "Indent OFF\n");
+		globalindent[type] = FALSE;
+		warning(nil, "%s OFF\n", strs[type]);
 		return IGlobal;
 	}
-	return runestrncmp(s, L"on", n) == 0;
+	if(runestrncmp(s, L"on", n) == 0)
+		return TRUE;
+	if(runestrncmp(s, L"off", n) == 0)
+		return FALSE;
+	return IError;
 }
 
 static void
-fixindent(Window *w, void*)
+fixindent(Window *w, void *v)
 {
-	w->autoindent = globalautoindent;
+	int t = *(int*)v;
+	w->indent[t] = globalindent[t];
 }
 
 void
-indent(Text *et, Text*, Text *argt, int, int, Rune *arg, int narg)
+indent(Text *et, Text*, Text *argt, int type, int, Rune *arg, int narg)
 {
 	Rune *a, *r;
 	Window *w;
-	int na, len, autoindent;
+	int na, len, ival;
 
 	w = nil;
 	if(et!=nil && et->w!=nil)
 		w = et->w;
-	autoindent = IError;
+	ival = IError;
 	getarg(argt, FALSE, TRUE, &r, &len);
 	if(r!=nil && len>0)
-		autoindent = indentval(r, len);
+		ival = indentval(r, len, type);
 	else{
 		a = findbl(arg, narg, &na);
 		if(a != arg)
-			autoindent = indentval(arg, narg-na);
+			ival = indentval(arg, narg-na, type);
 	}
-	if(autoindent == IGlobal)
-		allwindows(fixindent, nil);
-	else if(w != nil && autoindent >= 0)
-		w->autoindent = autoindent;
+	if(ival == IGlobal)
+		allwindows(fixindent, &type);
+	else if(w != nil && ival >= 0)
+		w->indent[type] = ival;
 }
 
 void
@@ -1196,7 +1243,6 @@ runproc(void *argvp)
 	int ac, w, inarg, i, n, fd, nincl, winid;
 	int pipechar;
 	char buf[512];
-	static void *parg[2];
 	void **argv;
 
 	argv = argvp;

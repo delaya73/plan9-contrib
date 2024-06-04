@@ -3,6 +3,7 @@
 #include <bio.h>
 #include <draw.h>
 #include <event.h>
+#include <keyboard.h>
 #include "imagefile.h"
 
 int		cflag = 0;
@@ -13,8 +14,6 @@ int		threeflag = 0;
 int		output = 0;
 ulong	outchan = CMAP8;
 Image	**allims;
-Image	**allmasks;
-Rawimage	**allimages;
 int		which;
 int		defaultcolor = 1;
 
@@ -28,14 +27,14 @@ char	*show(int, char*);
 Rectangle
 imager(void)
 {
-	Rectangle r;
+	Point p1, p2;
 
 	if(allims==nil || allims[0]==nil)
 		return screen->r;
-	r = insetrect(screen->clipr, Edge+Border);
-	r.max.x = r.min.x+Dx(allims[0]->r);
-	r.max.y = r.min.y+Dy(allims[0]->r);
-	return r;
+
+	p1 = addpt(divpt(subpt(allims[0]->r.max, allims[0]->r.min), 2), allims[0]->r.min);
+	p2 = addpt(divpt(subpt(screen->clipr.max, screen->clipr.min), 2), screen->clipr.min);
+	return rectaddpt(allims[0]->r, subpt(p2, p1));
 }
 
 void
@@ -51,14 +50,7 @@ eresized(int new)
 		return;
 	r = imager();
 	border(screen, r, -Border, nil, ZP);
-	r.min.x += allims[which]->r.min.x - allims[0]->r.min.x;
-	r.min.y += allims[which]->r.min.y - allims[0]->r.min.y;
-	if(which > 0 && allimages[which]->gifflags & TRANSP)
-		drawop(screen, r, allims[which], allmasks[which],
-			allims[which]->r.min, SoverD);
-	else
-		drawop(screen, r, allims[which], allmasks[which],
-			allims[which]->r.min, S);
+	draw(screen, r, allims[which], nil, allims[which]->r.min);
 	flushimage(display, 1);
 }
 
@@ -289,28 +281,31 @@ char*
 show(int fd, char *name)
 {
 	Rawimage **images, **rgbv;
-	Image **ims, **masks;
+	Image *tmp, *msk, *img, *dst, **ims;
+	Rectangle r;
 	int j, k, n, ch, nloop, loopcount, dt;
 	char *err;
 	char buf[32];
 
 	err = nil;
-	images = readgif(fd, CRGB);
+	images = readgif(fd, CRGB, dflag);
 	if(images == nil){
 		fprint(2, "gif: decode %s failed: %r\n", name);
 		return "decode";
 	}
 	for(n=0; images[n]; n++)
-		;
+		if(n == 0)
+			r = images[n]->r;
+		else
+			combinerect(&r, images[n]->r);
+	tmp = nil;
 	ims = malloc((n+1)*sizeof(Image*));
-	masks = malloc((n+1)*sizeof(Image*));
 	rgbv = malloc((n+1)*sizeof(Rawimage*));
-	if(masks==nil || rgbv==nil || ims==nil){
+	if(rgbv==nil || ims==nil){
 		fprint(2, "gif: malloc of masks for %s failed: %r\n", name);
 		err = "malloc";
 		goto Return;
 	}
-	memset(masks, 0, (n+1)*sizeof(Image*));
 	memset(ims, 0, (n+1)*sizeof(Image*));
 	memset(rgbv, 0, (n+1)*sizeof(Rawimage*));
 	if(!dflag){
@@ -337,27 +332,45 @@ show(int fd, char *name)
 			goto Return;
 		}
 		if(!dflag){
-			masks[k] = transparency(images[k], name);
+			msk = transparency(images[k], name);
 			if(rgbv[k]->chandesc == CY)
-				ims[k] = allocimage(display, rgbv[k]->r, GREY8, 0, 0);
+				img = allocimage(display, rgbv[k]->r, GREY8, 0, 0);
 			else
-				ims[k] = allocimage(display, rgbv[k]->r, outchan, 0, 0);
-			if(ims[k] == nil){
+				img = allocimage(display, rgbv[k]->r, outchan, 0, 0);
+			if(tmp == nil)
+				tmp = allocimage(display, r, img->chan, 0, DWhite);
+			ims[k]= dst = allocimage(display, r, tmp->chan, 0, DWhite);
+			if(tmp == nil || img == nil || dst == nil){
 				fprint(2, "gif: allocimage %s failed: %r\n", name);
 				err = "allocimage";
 				goto Return;
 			}
-			if(loadimage(ims[k], ims[k]->r, rgbv[k]->chans[0], rgbv[k]->chanlen) < 0){
+			if(loadimage(img, img->r, rgbv[k]->chans[0], rgbv[k]->chanlen) < 0){
 				fprint(2, "gif: loadimage %s failed: %r\n", name);
 				err = "loadimage";
 				goto Return;
 			}
+			switch((images[k]->gifflags>>2)&7){
+			default:
+				draw(tmp, img->r, img, msk, img->r.min);
+				draw(dst, tmp->r, tmp, nil, tmp->r.min);
+				break;
+			case 2:
+				draw(tmp, img->r, display->white, msk, img->r.min);
+				/* no break */
+			case 3:
+				draw(dst, tmp->r, tmp, nil, tmp->r.min);
+				draw(dst, img->r, img, msk, img->r.min);
+				break;
+			}
+			freeimage(msk);
+			freeimage(img);
 		}
 	}
+	if(tmp)
+		freeimage(tmp);
 
-	allimages = images;
 	allims = ims;
-	allmasks = masks;
 	loopcount = images[0]->gifloopcount;
 	if(!dflag){
 		nloop = 0;
@@ -369,7 +382,8 @@ show(int fd, char *name)
 				if(dt < 50)
 					dt = 50;
 				while(n==1 || ecankbd()){
-					if((ch=ekbd())=='q' || ch==0x7F || ch==0x04)	/* an odd, democratic list */
+					/* an odd, democratic list */
+					if((ch=ekbd())=='q' || ch==Kdel || ch==Keof)
 						exits(nil);
 					if(ch == '\n')
 						goto Out;
@@ -380,10 +394,8 @@ show(int fd, char *name)
 		/* loop count has run out */
 		ekbd();
     Out:
-		drawop(screen, screen->clipr, display->white, nil, ZP, S);
+		draw(screen, screen->clipr, display->white, nil, ZP);
 	}
-	if(n>1 && output)
-		fprint(2, "gif: warning: only writing first image in %d-image GIF %s\n", n, name);
 	if(nineflag){
 		if(images[0]->gifflags&TRANSP){
 			addalpha(rgbv[0]);
@@ -409,8 +421,6 @@ show(int fd, char *name)
 
     Return:
 	allims = nil;
-	allmasks = nil;
-	allimages = nil;
 	for(k=0; images[k]; k++){
 		for(j=0; j<images[k]->nchans; j++)
 			free(images[k]->chans[j]);
@@ -418,12 +428,10 @@ show(int fd, char *name)
 		if(rgbv[k])
 			free(rgbv[k]->chans[0]);
 		freeimage(ims[k]);
-		freeimage(masks[k]);
 		free(images[k]);
 		free(rgbv[k]);
 	}
 	free(images);
-	free(masks);
 	free(ims);
 	return err;
 }

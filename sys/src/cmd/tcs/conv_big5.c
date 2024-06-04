@@ -1,12 +1,6 @@
-#ifdef	PLAN9
 #include	<u.h>
 #include	<libc.h>
 #include	<bio.h>
-#else
-#include	<stdio.h>
-#include	<unistd.h>
-#include	"plan9.h"
-#endif
 #include	"hdr.h"
 #include	"conv.h"
 #include	"big5.h"
@@ -44,8 +38,8 @@ big5proc(int c, Rune **r, long input_loc)
 		else {
 			nerrors++;
 			if(squawk)
-				EPR "%s: bad big5 glyph (from 0x%x,0x%lx) near byte %ld in %s\n",
-					argv0, lastc, cold, input_loc, file);
+				warn("bad big5 glyph (from 0x%x,0x%lx) near byte %ld in %s",
+					lastc, cold, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 			state = state0;
@@ -56,8 +50,8 @@ big5proc(int c, Rune **r, long input_loc)
 		else {
 			nerrors++;
 			if(squawk)
-				EPR "%s: bad big5 font %d (from 0x%x,0x%lx) near byte %ld in %s\n",
-					argv0, lastc-161, lastc, cold, input_loc, file);
+				warn("bad big5 font %d (from 0x%x,0x%lx) near byte %ld in %s",
+					lastc-161, lastc, cold, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 			state = state0;
@@ -71,8 +65,8 @@ big5proc(int c, Rune **r, long input_loc)
 		if(ch < 0){
 			nerrors++;
 			if(squawk)
-				EPR "%s: unknown big5 %ld (from 0x%x,0x%lx) near byte %ld in %s\n",
-					argv0, n, lastc, cold, input_loc, file);
+				warn("unknown big5 %ld (from 0x%x,0x%lx) near byte %ld in %s",
+					n, lastc, cold, input_loc, file);
 			if(!clean)
 				emit(BADMAP);
 		} else
@@ -82,7 +76,7 @@ big5proc(int c, Rune **r, long input_loc)
 }
 
 void
-big5_in(int fd, long *notused, struct convert *out)
+big5_in(int fd, long *, struct convert *out)
 {
 	Rune ob[N];
 	Rune *r, *re;
@@ -90,7 +84,6 @@ big5_in(int fd, long *notused, struct convert *out)
 	int n, i;
 	long nin;
 
-	USED(notused);
 	r = ob;
 	re = ob+N-3;
 	nin = 0;
@@ -114,14 +107,13 @@ big5_in(int fd, long *notused, struct convert *out)
 }
 
 void
-big5_out(Rune *base, int n, long *notused)
+big5_out(Rune *base, int n, long *)
 {
 	char *p;
 	int i;
 	Rune r;
 	static int first = 1;
 
-	USED(notused);
 	if(first){
 		first = 0;
 		for(i = 0; i < NRUNE; i++)
@@ -137,7 +129,7 @@ big5_out(Rune *base, int n, long *notused)
 		if(r < 128)
 			*p++ = r;
 		else {
-			if(tab[r] != -1){
+			if(r < NRUNE && tab[r] != -1){
 				r = tab[r];
 				if(r >= BIG5MAX){
 					*p++ = 0xA1;
@@ -153,7 +145,7 @@ big5_out(Rune *base, int n, long *notused)
 				}
 			}
 			if(squawk)
-				EPR "%s: rune 0x%x not in output cs\n", argv0, r);
+				warn("rune 0x%x not in output cs", r);
 			nerrors++;
 			if(clean)
 				continue;

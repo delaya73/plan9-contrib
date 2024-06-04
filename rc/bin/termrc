@@ -86,17 +86,30 @@ if(~ $monitor ask){
 	if(~ $#monitor 0)
 		monitor=xga
 }
-if(test -f /dev/mousectl){
-	switch($mouseport){
-	case ps2 ps2intellimouse 0 1 2
-		aux/mouse $mouseport
-		# parse vgasize into fields
-		vgasize=`{echo $vgasize}
-		if(! ~ $"monitor '' && ! ~ `{cat /dev/user} none){
+
+# parse vgasize into fields
+if(test -f /dev/vgactl){
+	vgasize=`{echo $vgasize}
+	if(! ~ $"monitor '' && ! ~ `{cat /dev/user} none){
+		@{
+			rfork n
 			if(~ $monitor vesa)
 				aux/realemu
 			aux/vga -l $vgasize
 		}
+	}
+}
+
+if(! test -d /dev/draw)
+	bind -a '#i' /dev
+
+if(! test -f /dev/mouse)
+	bind -a '#m' /dev
+
+if(test -f /dev/mousectl){
+	switch($mouseport){
+	case ps2 ps2intellimouse 0 1 2
+		aux/mouse $mouseport
 		if(~ $accupoint 1)
 			pipefile -dr /bin/aux/accupoint /dev/mouse
 	}

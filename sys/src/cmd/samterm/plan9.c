@@ -9,12 +9,16 @@
 #include "flayer.h"
 #include "samterm.h"
 
+enum {
+	STACK = 4096,
+};
+
 static char exname[64];
 
 void
 usage(void)
 {
-	fprint(2, "usage: samterm [-a]\n");
+	fprint(2, "usage: samterm [-ai]\n");
 	threadexitsall("usage");
 }
 
@@ -27,6 +31,9 @@ getscreen(int argc, char **argv)
 	case 'a':
 		autoindent = 1;
 		break;
+	case 'i':
+		spacesindent = 1;
+		break;
 	default:
 		usage();
 	}ARGEND
@@ -38,6 +45,7 @@ getscreen(int argc, char **argv)
 	t = getenv("tabstop");
 	if(t != nil)
 		maxtab = strtoul(t, nil, 0);
+	free(t);
 	draw(screen, screen->clipr, display->white, nil, ZP);
 }
 
@@ -139,39 +147,6 @@ extproc(void *argv)
 	}
 }
 
-void
-extstart(void)
-{
-	char buf[32];
-	int fd;
-	static int p[2];
-	static void *arg[2];
-
-	if(pipe(p) < 0)
-		return;
-	sprint(exname, "/srv/sam.%s", getuser());
-	fd = create(exname, 1, 0600);
-	if(fd < 0){	/* assume existing guy is more important */
-    Err:
-		close(p[0]);
-		close(p[1]);
-		return;
-	}
-	sprint(buf, "%d", p[0]);
-	if(write(fd, buf, strlen(buf)) <= 0)
-		goto Err;
-	close(fd);
-	/*
-	 * leave p[0] open so if the file is removed the event
-	 * library won't get an error
-	 */
-	plumbc = chancreate(sizeof(int), 0);
-	arg[0] = plumbc;
-	arg[1] = &p[1];
-	proccreate(extproc, arg, 1024);
-	atexit(removeextern);
-}
-
 int
 plumbformat(int i)
 {
@@ -260,7 +235,7 @@ plumbstart(void)
 	}
 	arg[0] =plumbc;
 	arg[1] = &fd;
-	proccreate(plumbproc, arg, 4096);
+	proccreate(plumbproc, arg, STACK);
 	return 1;
 }
 
@@ -295,5 +270,5 @@ void
 hoststart(void)
 {
 	hostc = chancreate(sizeof(int), 0);
-	proccreate(hostproc, hostc, 1024);
+	proccreate(hostproc, hostc, STACK);
 }

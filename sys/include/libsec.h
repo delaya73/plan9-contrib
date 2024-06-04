@@ -424,6 +424,8 @@ typedef struct TLSconn{
 	uchar	*sessionKey;
 	int	sessionKeylen;
 	char	*sessionConst;
+	char	*serverName;
+	char	*pskID;
 } TLSconn;
 
 /* tlshand.c */

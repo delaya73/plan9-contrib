@@ -25,6 +25,15 @@ On the PC and some other machines, the key labeled
 .B Caps
 .B Lock
 acts as an additional control key.
+To make it work like an actual
+.B Caps
+.B Lock
+key you can get it with:
+.PP
+.RS
+.L
+cat /sys/lib/kbmap/caps >> /dev/kbmap
+.RE
 .PP
 The delete character
 .RB ( 0x7F )
@@ -83,21 +92,15 @@ key on the SLC, the
 key on the Magnum, and either
 .B Alt
 key on the PC.
-After typing the compose key, type a capital
-.L X
-and exactly four hexadecimal characters (digits and
+After typing the compose key, type a lower case
+.L x
+and up to six hexadecimal characters (digits and
 .L a
 to
 .LR f )
-to type a single two-byte rune with the value represented by
-the typed number.
-Type a lower case
-.L x
-and exactly
-.I UTFmax*2
-hexadecimal characters to type a single
-.I UTFmax
-bytes rune.
+followed by a semicolon (if the sequence is less
+than six digits long) to type a single rune with the
+value represented by the typed number.
 There are shorthands for many characters, comprising
 the compose key followed by a two- or three-character sequence.
 There are several rules guiding the design of the sequences, as

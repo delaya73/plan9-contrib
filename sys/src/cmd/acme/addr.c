@@ -48,6 +48,27 @@ isregexc(int r)
 	return FALSE;
 }
 
+// nlcounttopos starts at q0 and advances nl lines,
+// being careful not to walk past the end of the text,
+// and then nr chars, being careful not to walk past
+// the end of the current line.
+// It returns the final position.
+long
+nlcounttopos(Text *t, long q0, long nl, long nr)
+{
+	while(nl > 0 && q0 < t->file->nc) {
+		if(textreadc(t, q0++) == '\n')
+			nl--;
+	}
+	if(nl > 0)
+		return q0;
+	while(nr > 0 && q0 < t->file->nc && textreadc(t, q0) != '\n') {
+		q0++;
+		nr--;
+	}
+	return q0;
+}
+
 Range
 number(Mntdir *md, Text *t, Range r, int line, int dir, int size, int *evalp)
 {
@@ -215,12 +236,12 @@ address(Mntdir *md, Text *t, Range lim, Range ar, void *a, uint q0, uint q1, int
 		case '5': case '6': case '7': case '8': case '9':
 			n = c -'0';
 			while(q<q1){
-				c = (*getc)(a, q++);
-				if(c<'0' || '9'<c){
+				nc = (*getc)(a, q++);
+				if(nc<'0' || '9'<nc){
 					q--;
 					break;
 				}
-				n = n*10+(c-'0');
+				n = n*10+(nc-'0');
 			}
 			if(*evalp)
 				r = number(md, t, r, n, dir, size, evalp);

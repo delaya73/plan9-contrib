@@ -7,7 +7,7 @@
 enum {
 	/* Constants, all preceded by byte 0xFF */
 	SOF	=0xC0,	/* Start of Frame */
-	SOF2=0xC2,	/* Start of Frame; progressive Huffman */
+	SOF2	=0xC2,	/* Start of Frame; progressive Huffman */
 	JPG	=0xC8,	/* Reserved for JPEG extensions */
 	DHT	=0xC4,	/* Define Huffman Tables */
 	DAC	=0xCC,	/* Arithmetic coding conditioning */
@@ -226,9 +226,9 @@ jpgerror(Header *h, char *fmt, ...)
 	va_start(arg, fmt);
 	vseprint(h->err, h->err+sizeof h->err, fmt, arg);
 	va_end(arg);
-
-	werrstr(h->err);
-	jpgfreeall(h, 1);
+	if(h->image != nil)
+		fprint(2, "jpg: partial image: %s\n", h->err);
+	werrstr("%s", h->err);
 	longjmp(h->errlab, 1);
 }
 
@@ -247,7 +247,7 @@ Breadjpg(Biobuf *b, int colorspace)
 	}
 	jpginit();
 	h = malloc(sizeof(Header));
-	array = malloc(sizeof(Header));
+	array = malloc(2*sizeof(Rawimage*));
 	if(h==nil || array==nil){
 		free(h);
 		free(array);
@@ -258,7 +258,7 @@ Breadjpg(Biobuf *b, int colorspace)
 	h->fd = b;
 	errstr(buf, sizeof buf);	/* throw it away */
 	if(setjmp(h->errlab))
-		r = nil;
+		r = h->image;
 	else
 		r = readslave(h, colorspace);
 	jpgfreeall(h, 0);
@@ -322,12 +322,15 @@ readslave(Header *header, int colorspace)
 		case SOF2:
 			header->Y = int2(b, 1);
 			header->X = int2(b, 3);
-			header->Nf =b[5];
+			header->Nf = b[5];
 			for(i=0; i<header->Nf; i++){
 				header->comp[i].C = b[6+3*i+0];
 				nibbles(b[6+3*i+1], &H, &V);
 				if(H<=0 || V<=0)
 					jpgerror(header, "non-positive sampling factor (Hsamp or Vsamp)");
+				/* hack: colormap1() doesnt handle resampling */
+				if(header->Nf == 1)
+					H = V = 1;
 				header->comp[i].H = H;
 				header->comp[i].V = V;
 				header->comp[i].Tq = b[6+3*i+2];
@@ -386,8 +389,12 @@ readbyte(Header *h)
 	if(h->peek >= 0){
 		x = h->peek;
 		h->peek = -1;
-	}else if(Bread(h->fd, &x, 1) != 1)
-		jpgerror(h, readerr);
+	}else
+		switch(Bread(h->fd, &x, 1)){
+		case 0: return -1;
+		case 1: break;
+		default: jpgerror(h, readerr);
+		}
 	return x;
 }
 
@@ -397,12 +404,17 @@ marker(Header *h)
 {
 	int c;
 
+Again:
 	while((c=readbyte(h)) == 0)
-		fprint(2, "ReadJPG: skipping zero byte at offset %lld\n", Boffset(h->fd));
+		;
+	if(c < 0)
+		return EOI;
 	if(c != 0xFF)
-		jpgerror(h, "ReadJPG: expecting marker; found 0x%x at offset %lld\n", c, Boffset(h->fd));
+		goto Again;
 	while(c == 0xFF)
 		c = readbyte(h);
+	if(c == 0)
+		goto Again;
 	return c;
 }
 
@@ -440,13 +452,9 @@ readsegment(Header *h, int *markerp)
 	int m, n;
 	uchar tmp[2];
 
-	m = marker(h);
-	switch(m){
-	case EOI:
+	if((m = marker(h)) == EOI){
 		*markerp = m;
 		return 0;
-	case 0:
-		jpgerror(h, "ReadJPG: expecting marker; saw %.2x at offset %lld", m, Boffset(h->fd));
 	}
 	if(Bread(h->fd, tmp, 2) != 2)
     Readerr:
@@ -473,7 +481,7 @@ int
 huffmantable(Header *h, uchar *b)
 {
 	Huffman *t;
-	int Tc, th, n, nsize, i, j, k, v, cnt, code, si, sr, m;
+	int Tc, th, n, nsize, i, j, k, v, cnt, code, si, sr;
 	int *maxcode;
 
 	nibbles(b[0], &Tc, &th);
@@ -488,8 +496,10 @@ huffmantable(Header *h, uchar *b)
 
 	/* flow chart C-2 */
 	nsize = 0;
-	for(i=0; i<16; i++)
-		nsize += b[1+i];
+	for(i=1; i<=16; i++)
+		nsize += b[i];
+	if(nsize == 0)
+		return 0;
 	t->size = jpgmalloc(h, (nsize+1)*sizeof(int), 1);
 	k = 0;
 	for(i=1; i<=16; i++){
@@ -545,24 +555,21 @@ outF25:
 	maxcode = t->maxcode;
 	/* stupid startup algorithm: just run machine for each byte value */
 	for(v=0; v<256; ){
-		cnt = 7;
-		m = 1<<7;
 		code = 0;
+		cnt = 8;
 		sr = v;
-		i = 1;
-		for(;;i++){
-			if(sr & m)
+		for(i=1;;i++){
+			cnt--;
+			if(sr & (1<<cnt))
 				code |= 1;
 			if(code <= maxcode[i])
 				break;
 			code <<= 1;
-			m >>= 1;
-			if(m == 0){
+			if(cnt == 0){
 				t->shift[v] = 0;
 				t->value[v] = -1;
 				goto continueBytes;
 			}
-			cnt--;
 		}
 		t->shift[v] = 8-cnt;
 		t->value[v] = t->val[t->valptr[i]+(code-t->mincode[i])];
@@ -631,7 +638,7 @@ baselinescan(Header *h, int colorspace)
 	ss = h->ss;
 	Ns = ss[0];
 	if((Ns!=3 && Ns!=1) || Ns!=h->Nf)
-		jpgerror(h, "ReadJPG: can't handle scan not 3 components");
+		jpgerror(h, "ReadJPG: can't handle scan not 1 or 3 components");
 
 	image = jpgmalloc(h, sizeof(Rawimage), 1);
 	h->image = image;
@@ -705,22 +712,22 @@ baselinescan(Header *h, int colorspace)
 				memset(zz, 0, 8*8*sizeof(int));
 				zz[0] = qt[0]*DC[comp];
 				k = 1;
-
-				for(;;){
+				do{
 					t = decode(h, acht);
+					assert(t >= 0);
 					if((t&0x0F) == 0){
 						if((t&0xF0) != 0xF0)
 							break;
 						k += 16;
 					}else{
-						k += t>>4;
 						z = receive(h, t&0xF);
-						zz[zig[k]] = z*qt[k];
-						if(k == 63)
+						k += t>>4;
+						if(k >= 64)
 							break;
+						zz[zig[k]] = z*qt[k];
 						k++;
 					}
-				}
+				} while(k < 64);
 
 				idct(zz);
 			}
@@ -842,7 +849,7 @@ progressiveinit(Header *h, int colorspace)
 	ss = h->ss;
 	Ns = ss[0];
 	Nf = h->Nf;
-	if((Ns!=3 && Ns!=1) || Ns!=Nf)
+	if(Ns!=3 && Ns!=1)
 		jpgerror(h, "ReadJPG: image must have 1 or 3 components");
 
 	image = jpgmalloc(h, sizeof(Rawimage), 1);
@@ -896,25 +903,26 @@ progressivedc(Header *h, int comp, int Ah, int Al)
 	int block, t, diff, qt, *dc, bn;
 	Huffman *dcht;
 	uchar *ss;
-	int Td[3], DC[3], blockno[3];
+	int i, Td[3], DC[3], blockno[3];
 
 	ss= h->ss;
 	Ns = ss[0];
-	if(Ns!=h->Nf)
-		jpgerror(h, "ReadJPG: can't handle progressive with Nf!=Ns in DC scan");
+	if(Ns!=1 && Ns!=h->Nf)
+		jpgerror(h, "ReadJPG: can't handle progressive with Ns!=1 and Nf!=Ns in DC scan");
 
 	/* initialize data structures */
 	h->cnt = 0;
 	h->sr = 0;
 	h->peek = -1;
-	for(comp=0; comp<Ns; comp++){
+
+	for(i=0; i<Ns; i++){
 		/*
 		 * JPEG requires scan components to be in same order as in frame,
 		 * so if both have 3 we know scan is Y Cb Cr and there's no need to
 		 * reorder
 		 */
-		nibbles(ss[2+2*comp], &Td[comp], &z);	/* z is ignored */
-		DC[comp] = 0;
+		nibbles(ss[2+2*i], &Td[i], &z);	/* z is ignored */
+		DC[i] = 0;
 	}
 
 	ri = h->ri;
@@ -922,31 +930,33 @@ progressivedc(Header *h, int comp, int Ah, int Al)
 	nmcu = h->nacross*h->ndown;
 	memset(blockno, 0, sizeof blockno);
 	for(mcu=0; mcu<nmcu; ){
-		for(comp=0; comp<Ns; comp++){
-			dcht = &h->dcht[Td[comp]];
+		for(i=0; i<Ns; i++){
+			if(Ns != 1) comp = i;
+
+			dcht = &h->dcht[Td[i]];
 			qt = h->qt[h->comp[comp].Tq][0];
 			dc = h->dccoeff[comp];
-			bn = blockno[comp];
+			bn = blockno[i];
 
 			for(block=0; block<h->nblock[comp]; block++){
 				if(Ah == 0){
 					t = decode(h, dcht);
 					diff = receive(h, t);
-					DC[comp] += diff;
-					dc[bn] = qt*DC[comp]<<Al;
+					DC[i] += diff;
+					dc[bn] = qt*DC[i]<<Al;
 				}else
 					dc[bn] |= qt*receivebit(h)<<Al;
 				bn++;
 			}
-			blockno[comp] = bn;
+			blockno[i] = bn;
 		}
 
 		/* process restart marker, if present */
 		mcu++;
 		if(ri>0 && mcu<nmcu && mcu%ri==0){
 			restart(h, mcu);
-			for(comp=0; comp<Ns; comp++)
-				DC[comp] = 0;
+			for(i=0; i<Ns; i++)
+				DC[i] = 0;
 		}
 	}
 }
@@ -1004,7 +1014,7 @@ progressiveac(Header *h, int comp, int Al)
 			blockno = tmcu*H*V + H*(y%V) + x%H;
 			acc = h->accoeff[comp][blockno];
 			k = Ss;
-			for(;;){
+			do {
 				rs = decode(h, acht);
 				/* XXX remove rrrr ssss as in baselinescan */
 				nibbles(rs, &rrrr, &ssss);
@@ -1017,14 +1027,14 @@ progressiveac(Header *h, int comp, int Al)
 					}
 					k += 16;
 				}else{
-					k += rrrr;
 					z = receive(h, ssss);
-					acc[k] = z*qt[k]<<Al;
-					if(k == Se)
+					k += rrrr;
+					if(k > Se)
 						break;
+					acc[k] = z*qt[k]<<Al;
 					k++;
 				}
-			}
+			} while(k <= Se);
 		}
 
 		/* process restart marker, if present */
@@ -1356,9 +1366,8 @@ static
 int
 decode(Header *h, Huffman *t)
 {
-	int code, v, cnt, m, sr, i;
+	int code, v, cnt, sr, i;
 	int *maxcode;
-	static int badcode;
 
 	maxcode = t->maxcode;
 	if(h->cnt < 8)
@@ -1374,30 +1383,24 @@ decode(Header *h, Huffman *t)
 	h->cnt -= 8;
 	if(h->cnt == 0)
 		nextbyte(h, 0);
-	h->cnt--;
 	cnt = h->cnt;
-	m = 1<<cnt;
 	sr = h->sr;
 	code <<= 1;
-	i = 9;
-	for(;;i++){
-		if(sr & m)
+	for(i = 9; i<17; i++){
+		cnt--;
+		if(sr & (1<<cnt))
 			code |= 1;
 		if(code <= maxcode[i])
 			break;
 		code <<= 1;
-		m >>= 1;
-		if(m == 0){
+		if(cnt == 0){
 			sr = nextbyte(h, 0);
-			m = 0x80;
 			cnt = 8;
 		}
-		cnt--;
 	}
 	if(i >= 17){
-		if(badcode == 0)
-			fprint(2, "badly encoded %dx%d JPEG file; ignoring bad value\n", h->X, h->Y);
-		badcode = 1;
+		/* bad code */
+		code = 0;
 		i = 0;
 	}
 	h->cnt = cnt;

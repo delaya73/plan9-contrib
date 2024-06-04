@@ -17,24 +17,20 @@ closemouse(Mousectl *mc)
 {
 	if(mc == nil)
 		return;
-
-	postnote(PNPROC, mc->pid, "kill");
-
-	do; while(nbrecv(mc->c, &mc->Mouse) > 0);
-
 	close(mc->mfd);
 	close(mc->cfd);
-	free(mc->file);
-	free(mc->c);
-	free(mc->resizec);
-	free(mc);
+	mc->mfd = mc->cfd = -1;
+	threadint(mc->pid);
 }
 
 int
 readmouse(Mousectl *mc)
 {
-	if(mc->image)
-		flushimage(mc->image->display, 1);
+	if(mc->image){
+		Display *d = mc->image->display;
+		if(d->bufp > d->buf)
+			flushimage(d, 1);
+	}
 	if(recv(mc->c, &mc->Mouse) < 0){
 		fprint(2, "readmouse: %r\n");
 		return -1;
@@ -53,14 +49,14 @@ _ioproc(void *arg)
 
 	mc = arg;
 	threadsetname("mouseproc");
-	one = 1;
 	memset(&m, 0, sizeof m);
-	mc->pid = getpid();
 	nerr = 0;
-	for(;;){
+	while(mc->mfd >= 0){
 		n = read(mc->mfd, buf, sizeof buf);
 		if(n != 1+4*12){
 			yield();	/* if error is due to exiting, we'll exit here */
+			if(mc->mfd < 0)
+				break;
 			fprint(2, "mouse: bad count %d not 49: %r\n", n);
 			if(n<0 || ++nerr>10)
 				threadexits("read error");
@@ -69,14 +65,17 @@ _ioproc(void *arg)
 		nerr = 0;
 		switch(buf[0]){
 		case 'r':
-			send(mc->resizec, &one);
+			one = 1;
+			if(nbsend(mc->resizec, &one) < 0)
+				continue;
 			/* fall through */
 		case 'm':
 			m.xy.x = atoi(buf+1+0*12);
 			m.xy.y = atoi(buf+1+1*12);
 			m.buttons = atoi(buf+1+2*12);
-			m.msec = atoi(buf+1+3*12);
-			send(mc->c, &m);
+			m.msec = (ulong)atoll(buf+1+3*12);
+			if(send(mc->c, &m) < 0)
+				continue;
 			/*
 			 * mc->Mouse is updated after send so it doesn't have wrong value if we block during send.
 			 * This means that programs should receive into mc->Mouse (see readmouse() above) if
@@ -86,6 +85,10 @@ _ioproc(void *arg)
 			break;
 		}
 	}
+	free(mc->file);
+	chanfree(mc->c);
+	chanfree(mc->resizec);
+	free(mc);
 }
 
 Mousectl*
@@ -99,10 +102,6 @@ initmouse(char *file, Image *i)
 		file = "/dev/mouse";
 	mc->file = strdup(file);
 	mc->mfd = open(file, ORDWR|OCEXEC);
-	if(mc->mfd<0 && strcmp(file, "/dev/mouse")==0){
-		bind("#m", "/dev", MAFTER);
-		mc->mfd = open(file, ORDWR|OCEXEC);
-	}
 	if(mc->mfd < 0){
 		free(mc);
 		return nil;
@@ -123,8 +122,8 @@ initmouse(char *file, Image *i)
 	free(t);
 	mc->image = i;
 	mc->c = chancreate(sizeof(Mouse), 0);
-	mc->resizec = chancreate(sizeof(int), 2);
-	proccreate(_ioproc, mc, 4096);
+	mc->resizec = chancreate(sizeof(int), 1);
+	mc->pid = proccreate(_ioproc, mc, 4096);
 	return mc;
 }
 

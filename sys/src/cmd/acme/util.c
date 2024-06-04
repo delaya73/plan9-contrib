@@ -77,6 +77,7 @@ errorwin1(Rune *dir, int ndir, Rune **incl, int nincl)
 		w = coladd(row.col[row.ncol-1], nil, nil, -1);
 		w->filemenu = FALSE;
 		winsetname(w, r, n);
+		xfidlog(w, "new");
 	}
 	free(r);
 	for(i=nincl; --i>=0; ){
@@ -85,7 +86,8 @@ errorwin1(Rune *dir, int ndir, Rune **incl, int nincl)
 		runemove(r, incl[i], n);
 		winaddincl(w, r, n);
 	}
-	w->autoindent = globalautoindent;
+	for(i=0; i<NINDENT; i++)
+		w->indent[i] = globalindent[i];
 	return w;
 }
 
@@ -301,6 +303,13 @@ bytetorune(char *s, int *ip)
 }
 
 int
+isspace(Rune c)
+{
+	return c == 0 || c == ' ' || c == '\t' ||
+		c == '\n' || c == '\r' || c == '\v';
+}
+
+int
 isalnum(Rune c)
 {
 	/*
@@ -372,7 +381,7 @@ restoremouse(Window *w)
 	int did;
 
 	did = 0;
-	if(mousew!=nil && mousew==w){
+	if(mousew!=nil && mousew==w) {
 		moveto(mousectl, prevmouse);
 		did = 1;
 	}

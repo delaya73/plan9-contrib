@@ -1,6 +1,5 @@
 #include <u.h>
 #include <libc.h>
-#include <auth.h>
 #include <fcall.h>
 #include <thread.h>
 #include <9p.h>
@@ -191,6 +190,12 @@ createfile(File *fp, char *name, char *uid, ulong perm, void *aux)
 	}
 
 	wlock(fp);
+	if(fp->parent == nil){
+		wunlock(fp);
+		werrstr("create in deleted directory");
+		return nil;
+	}
+
 	/*
 	 * We might encounter blank spots along the
 	 * way due to deleted files that have not yet
@@ -229,7 +234,6 @@ createfile(File *fp, char *name, char *uid, ulong perm, void *aux)
 	if(perm & DMEXCL)
 		f->qid.type |= QTEXCL;
 
-	f->mode = perm;
 	f->atime = f->mtime = time(0);
 	f->length = 0;
 	f->parent = fp;
@@ -254,7 +258,8 @@ walkfile1(File *dir, char *elem)
 	rlock(dir);
 	if(strcmp(elem, "..") == 0){
 		fp = dir->parent;
-		incref(fp);
+		if(fp != nil)
+			incref(fp);
 		runlock(dir);
 		closefile(dir);
 		return fp;
@@ -331,8 +336,9 @@ alloctree(char *uid, char *gid, ulong mode, void (*destroy)(File*))
 
 	incref(f);
 	t->root = f;
-	t->qidgen = 0;
-	t->dirqidgen = 1;
+
+	/* t->qidgen starts at 1 because root Qid.path is 0 */
+	t->qidgen = 1;
 	if(destroy == nil)
 		destroy = nop;
 	t->destroy = destroy;
@@ -388,12 +394,16 @@ opendirfile(File *dir)
 }
 
 long
-readdirfile(Readdir *r, uchar *buf, long n)
+readdirfile(Readdir *r, uchar *buf, long n, long o)
 {
 	long x, m;
 	Filelist *fl;
 
-	for(fl=r->fl, m=0; fl && m+2<=n; fl=fl->link, m+=x){
+	if(o == 0)
+		fl = r->dir->filelist;
+	else
+		fl = r->fl;
+	for(m=0; fl && m+2<=n; fl=fl->link, m+=x){
 		if(fl->f == nil)
 			x = 0;
 		else if((x=convD2M(fl->f, buf+m, n-m)) <= BIT16SZ)

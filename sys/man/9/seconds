@@ -7,19 +7,13 @@ seconds, ticks, fastticks, HZ, MS2HZ, MS2TK, TK2MS, TK2SEC \- kernel times and t
 long	seconds(void)
 .PP
 .B
-m->ticks
-.br
-MACHP(0)->ticks
-.PP
-.B
-vlong   	fastticks(uvlong *hz)
+vlong	fastticks(uvlong *hz)
 .PP
 .EX
 #define	HZ          ...
-#define	MS2HZ(t)    ...
-#define	TK2SEC(t)   ...
-#define	TK2MS(t)    ...
-#define	MS2TK(m)    ...
+#define	MS2HZ       (1000/HZ)
+#define	TK2SEC(t)   ((t)/HZ)
+#define	TK2MS(t)    ((t)*(1000/HZ))
 .EE
 .SH DESCRIPTION
 .I Seconds
@@ -31,9 +25,7 @@ The
 .B ticks
 field of the
 .B Mach
-structure pointed to by
-.B m
-returns the number of system-dependent clock ticks on the
+structure returns the number of system-dependent clock ticks on the
 given processor since system boot.
 On a multiprocessor,
 .B MACHP(0)
@@ -65,29 +57,19 @@ Milliseconds per clock tick.
 .BI TK2SEC( t )
 Convert
 .I t
-clock ticks to seconds and return the result (truncating not rounding).
+clock ticks to seconds (truncating not rounding).
 .TP
 .BI TK2MS( t )
 Convert
 .I t
-clock ticks to milliseconds and return the result.
-.TP
-.BI MS2TK( m )
-Convert
-.I m
-milliseconds to clock ticks and return the result (truncating).
-.PP
-The functions are often used to calculate delays for timing functions,
-for instance:
-.IP
-.EX
-if(atactlrwait(dp->cp, DHmagic, 0, MS2TK(100))){
-	...
-}
-.EE
+clock ticks to milliseconds.
 .SH SOURCE
 .B /sys/src/9/*/mem.h
 .br
 .B /sys/src/9/*/clock.c
+.br
+.B /sys/src/9/*/devarch.c
+.br
+.B /sys/src/9/*/timer.c
 .br
 .B /sys/src/9/port/tod.c

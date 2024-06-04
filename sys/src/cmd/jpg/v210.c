@@ -3,6 +3,7 @@
 #include <bio.h>
 #include <draw.h>
 #include <event.h>
+#include <keyboard.h>
 #include "imagefile.h"
 
 int		cflag = 0;
@@ -24,6 +25,16 @@ char	*show(int, char*);
 
 Rawimage** readV210(int fd, int colorspace);
 
+Rectangle
+imager(Image *i)
+{
+	Point p1, p2;
+
+	p1 = addpt(divpt(subpt(i->r.max, i->r.min), 2), i->r.min);
+	p2 = addpt(divpt(subpt(screen->clipr.max, screen->clipr.min), 2), screen->clipr.min);
+	return rectaddpt(i->r, subpt(p2, p1));
+}
+
 void
 eresized(int new)
 {
@@ -35,9 +46,7 @@ eresized(int new)
 	}
 	if(image == nil)
 		return;
-	r = insetrect(screen->clipr, Edge+Border);
-	r.max.x = r.min.x+Dx(image->r);
-	r.max.y = r.min.y+Dy(image->r);
+	r = imager(image);
 	border(screen, r, -Border, nil, ZP);
 	drawop(screen, r, image, nil, image->r.min, S);
 	flushimage(display, 1);
@@ -178,7 +187,7 @@ show(int fd, char *name)
 		}
 		image = i;
 		eresized(0);
-		if((ch=ekbd())=='q' || ch==0x7F || ch==0x04)
+		if((ch=ekbd())=='q' || ch==Kdel || ch==Keof)
 			exits(nil);
 		draw(screen, screen->clipr, display->white, nil, ZP);
 		image = nil;

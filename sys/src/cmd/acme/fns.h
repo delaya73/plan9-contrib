@@ -54,6 +54,7 @@ void	get(Text*, Text*, Text*, int, int, Rune*, int);
 void	put(Text*, Text*, Text*, int, int, Rune*, int);
 void	putfile(File*, int, int, Rune*, int);
 void	fontx(Text*, Text*, Text*, int, int, Rune*, int);
+int	isspace(Rune);
 int	isalnum(Rune);
 void	execute(Text*, uint, uint, int, Text*);
 int	search(Text*, Rune*, uint);
@@ -87,6 +88,8 @@ Rune*	skipbl(Rune*, int, int*);
 Rune*	findbl(Rune*, int, int*);
 char*	edittext(Window*, int, Rune*, int);
 void		flushwarnings(void);
+long	nlcount(Text*, long, long, long*);
+long	nlcounttopos(Text*, long, long, long);
 
 #define	runemalloc(a)		(Rune*)emalloc((a)*sizeof(Rune))
 #define	runerealloc(a, b)	(Rune*)erealloc((a), (b)*sizeof(Rune))

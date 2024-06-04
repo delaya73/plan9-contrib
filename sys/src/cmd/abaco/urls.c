@@ -29,13 +29,14 @@ urlalloc(Runestr *src, Runestr *post, int m)
 void
 urlfree(Url *u)
 {
-	if(u && decref(u)==0){
-		closerunestr(&u->src);
-		closerunestr(&u->act);
-		closerunestr(&u->post);
-		closerunestr(&u->ctype);
-		free(u);
-	}
+	if(u==nil || decref(u) > 0)
+		return;
+
+	closerunestr(&u->src);
+	closerunestr(&u->act);
+	closerunestr(&u->post);
+	closerunestr(&u->ctype);
+	free(u);
 }
 
 Url *
@@ -52,23 +53,19 @@ urldup(Url *a)
 	return b;
 }
 
-static
-Runestr
+static Runestr
 getattr(int conn, char *s)
 {
 	char buf[BUFSIZE];
 	int fd, n;
 
-	snprint(buf, sizeof(buf), "%s/%d/%s", webmountpt, conn, s);
-	fd = open(buf, OREAD);
-	if(fd < 0)
-		error("can't open attr file");
-
-	n = read(fd, buf, sizeof(buf)-1);
-	if(n < 0)
-		error("can't read");
-
-	close(fd);
+	n = 0;
+	snprint(buf, sizeof buf, "%s/%d/%s", webmountpt, conn, s);
+	if((fd = open(buf, OREAD)) >= 0){
+		if((n = read(fd, buf, sizeof(buf)-1)) < 0)
+			n = 0;
+		close(fd);
+	}
 	buf[n] = '\0';
 	return (Runestr){runesmprint("%s", buf), n};
 }
@@ -126,61 +123,81 @@ urlopen(Url *u)
 }
 
 void
-urlcanon(Rune *name){
-	Rune *s, *t;
+urlcanon(Rune *name)
+{
+	Rune *s, *e, *tail, tailr;
 	Rune **comp, **p, **q;
-	int rooted;
+	int n;
 
-	name = runestrchr(name, L'/')+2;
-	rooted=name[0]==L'/';
+	name = runestrstr(name, L"://");
+	if(name == nil)
+		return;
+	name = runestrchr(name+3, '/');
+	if(name == nil)
+		return;
+	if(*name == L'/')
+		name++;
+
+	n = 0;
+	for(e = name; *e != 0; e++)
+		if(*e == L'/')
+			n++;
+	comp = emalloc((n+2)*sizeof *comp);
+
 	/*
 	 * Break the name into a list of components
 	 */
-	comp=emalloc(runestrlen(name)*sizeof(char *));
-	p=comp;
-	*p++=name;
-	for(s=name;;s++){
-		if(*s==L'/'){
-			*p++=s+1;
-			*s='\0';
-		}
-		else if(*s=='\0')
+	p = comp;
+	*p++ = name;
+	tail = nil;
+	tailr = L'☺';	/* silence compiler */
+	for(s = name; *s != 0; s++){
+		if(*s == '?' || *s == '#'){
+			tail = s+1;
+			tailr = *s;
+			*s = 0;
 			break;
+		}
+		else if(*s == L'/'){
+			*p++ = s+1;
+			*s = 0;
+		}
 	}
-	*p=0;
+
 	/*
 	 * go through the component list, deleting components that are empty (except
-	 * the last component) or ., and any .. and its non-.. predecessor.
+	 * the last component) or ., and any .. and its predecessor.
 	 */
-	p=q=comp;
-	while(*p){
-		if(runestrcmp(*p, L"")==0 && p[1]!=0
-		|| runestrcmp(*p, L".")==0)
-			p++;
-		else if(runestrcmp(*p, L"..")==0 && q!=comp && runestrcmp(q[-1], L"..")!=0){
-			--q;
-			p++;
-		}
+	for(p = q = comp; *p != nil; p++){
+		if(runestrcmp(*p, L"") == 0 && p[1] != nil
+		|| runestrcmp(*p, L".") == 0)
+			continue;
+		else if(q>comp && runestrcmp(*p, L"..") == 0 && runestrcmp(q[-1], L"..") != 0)
+			q--;
 		else
-			*q++=*p++;
+			*q++ = *p;
 	}
-	*q=0;
+	*q = nil;
+
 	/*
 	 * rebuild the path name
 	 */
-	s=name;
-	if(rooted) *s++='/';
-	for(p=comp;*p;p++){
-		t=*p;
-		while(*t) *s++=*t++;
-		if(p[1]!=0) *s++='/';
+	s = name;
+	for(p = comp; p<q; p++){
+		n = runestrlen(*p);
+		memmove(s, *p, sizeof(Rune)*n);
+		s += n;
+		if(p[1] != nil)
+			*s++ = '/';
 	}
-	*s='\0';
+	*s = 0;
+	if(tail)
+		runeseprint(s, e+1, "%C%S", tailr, tail);
 	free(comp);
 }
 
 /* this is a HACK */
-Rune *
+Rune*
 urlcombine(Rune *b, Rune *u)
 {
 	Rune *p, *q, *sep, *s;
@@ -200,7 +217,9 @@ urlcombine(Rune *b, Rune *u)
 		q =  runestrchr(b, L':');
 		return runesmprint("%.*S:%S", (int)(q-b), b, u);
 	}
-	p = runestrstr(b, L"://")+3;
+	p = runestrstr(b, L"://");
+	if(p != nil)
+		p += 3;
 	sep = L"";
 	q = nil;
 	if(*u ==L'/')
@@ -209,7 +228,7 @@ urlcombine(Rune *b, Rune *u)
 		for(i=0; i<nelem(endrune); i++)
 			if(q = runestrchr(p, endrune[i]))
 				break;
-	}else{
+	}else if(p != nil){
 		sep = L"/";
 		restore = 0;
 		s = runestrchr(p, L'?');
@@ -220,7 +239,8 @@ urlcombine(Rune *b, Rune *u)
 		q = runestrrchr(p, L'/');
 		if(restore)
 			*s = L'?';
-	}
+	}else
+		sep = L"/";
 	if(q == nil)
 		p = runesmprint("%S%S%S", b, sep, u);
 	else

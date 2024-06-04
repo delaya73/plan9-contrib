@@ -349,29 +349,35 @@ expirejar(Jar *jar, int exiting)
 int
 syncjar(Jar *jar)
 {
-	int i, fd;
+	int i, fd, doread, dowrite;
 	char *line;
-	Dir *d;
 	Biobuf *b;
+	Dir *d;
 	Qid q;
 
 	if(jar->file==nil)
 		return 0;
 
-	memset(&q, 0, sizeof q);
-	if((d = dirstat(jar->file)) != nil){
-		q = d->qid;
-		if(d->qid.path != jar->qid.path || d->qid.vers != jar->qid.vers)
-			jar->dirty = 1;
+	doread = 0;
+	dowrite = jar->dirty;
+
+	q = jar->qid;
+	if((d = dirstat(jar->file)) == nil)
+		dowrite = 1;
+	else {
+		if(q.path != d->qid.path || q.vers != d->qid.vers){
+			q = d->qid;
+			doread = 1;
+		}
 		free(d);
 	}
 
-	if(jar->dirty == 0)
+	if(!doread && !dowrite)
 		return 0;
 
 	fd = -1;
 	for(i=0; i<50; i++){
-		if((fd = create(jar->lockfile, OWRITE, DMEXCL|0666)) < 0){
+		if((fd = create(jar->lockfile, OWRITE, DMEXCL|0600)) < 0){
 			sleep(100);
 			continue;
 		}
@@ -384,53 +390,83 @@ syncjar(Jar *jar)
 		return -1;
 	}
 
-	for(i=0; i<jar->nc; i++)	/* mark is cleared by addcookie */
-		jar->c[i].mark = jar->c[i].ondisk;
+	if(doread){
+		for(i=0; i<jar->nc; i++)	/* mark is cleared by addcookie */
+			jar->c[i].mark = jar->c[i].ondisk;
 
-	if((b = Bopen(jar->file, OREAD)) == nil){
-		if(debug)
-			fprint(2, "Bopen %s: %r", jar->file);
-		werrstr("cannot read cookie file %s: %r", jar->file);
-		close(fd);
-		return -1;
-	}
-	for(; (line = Brdstr(b, '\n', 1)) != nil; free(line)){
-		if(*line == '#')
-			continue;
-		addtojar(jar, line, 1);
-	}
-	Bterm(b);
+		if((b = Bopen(jar->file, OREAD)) == nil){
+			if(debug)
+				fprint(2, "Bopen %s: %r", jar->file);
+			werrstr("cannot read cookie file %s: %r", jar->file);
+			close(fd);
+			return -1;
+		}
+		for(; (line = Brdstr(b, '\n', 1)) != nil; free(line)){
+			if(*line == '#')
+				continue;
+			addtojar(jar, line, 1);
+		}
+		Bterm(b);
 
-	for(i=0; i<jar->nc; i++)
-		if(jar->c[i].mark)
-			delcookie(jar, &jar->c[i]);
+		for(i=0; i<jar->nc; i++)
+			if(jar->c[i].mark)
+				delcookie(jar, &jar->c[i]);
+	}
 
 	purgejar(jar);
 
-	b = Bopen(jar->file, OWRITE);
-	if(b == nil){
-		if(debug)
-			fprint(2, "Bopen write %s: %r", jar->file);
-		close(fd);
-		return -1;
+	if(dowrite){
+		i = create(jar->file, OWRITE, 0600);
+		if(i < 0 || (b = Bfdopen(i, OWRITE)) == nil){
+			if(debug)
+				fprint(2, "Bopen write %s: %r", jar->file);
+			if(i >= 0)
+				close(i);
+			close(fd);
+			return -1;
+		}
+		Bprint(b, "# webcookies cookie jar\n");
+		Bprint(b, "# comments and non-standard fields will be lost\n");
+		for(i=0; i<jar->nc; i++){
+			if(jar->c[i].expire == ~0)
+				continue;
+			Bprint(b, "%K\n", &jar->c[i]);
+			jar->c[i].ondisk = 1;
+		}
+		Bflush(b);
+		if((d = dirfstat(Bfildes(b))) != nil){
+			q = d->qid;
+			free(d);
+		}
+		Bterm(b);
 	}
-	Bprint(b, "# webcookies cookie jar\n");
-	Bprint(b, "# comments and non-standard fields will be lost\n");
-	for(i=0; i<jar->nc; i++){
-		if(jar->c[i].expire == ~0)
-			continue;
-		Bprint(b, "%K\n", &jar->c[i]);
-		jar->c[i].ondisk = 1;
-	}
-	Bterm(b);
 
+	jar->qid = q;
 	jar->dirty = 0;
+
 	close(fd);
-	if((d = dirstat(jar->file)) != nil){
-		jar->qid = d->qid;
-		free(d);
-	}
 	return 0;
+}
+
+void
+closejar(Jar *jar)
+{
+	int i;
+
+	if(jar == nil)
+		return;
+	expirejar(jar, 0);
+	if(jar->dirty)
+		if(syncjar(jar) < 0)
+			fprint(2, "warning: cannot rewrite cookie jar: %r\n");
+
+	for(i=0; i<jar->nc; i++)
+		freecookie(&jar->c[i]);
+
+	free(jar->lockfile);
+	free(jar->file);
+	free(jar->c);
+	free(jar);	
 }
 
 Jar*
@@ -440,6 +476,7 @@ readjar(char *file)
 	Jar *jar;
 
 	jar = newjar();
+	file = estrdup9p(file);
 	lock = emalloc9p(strlen(file)+10);
 	strcpy(lock, file);
 	if((p = strrchr(lock, '/')) != nil)
@@ -451,32 +488,15 @@ readjar(char *file)
 	p[1] = '.';
 	jar->lockfile = lock;
 	jar->file = file;
-	jar->dirty = 1;
+	jar->dirty = 0;
 
 	if(syncjar(jar) < 0){
-		free(jar->file);
-		free(jar->lockfile);
-		free(jar);
+		closejar(jar);
 		return nil;
 	}
 	return jar;
 }
 
-void
-closejar(Jar *jar)
-{
-	int i;
-
-	expirejar(jar, 0);
-	if(syncjar(jar) < 0)
-		fprint(2, "warning: cannot rewrite cookie jar: %r\n");
-
-	for(i=0; i<jar->nc; i++)
-		freecookie(&jar->c[i]);
-
-	free(jar->file);
-	free(jar);	
-}
 
 /*
  * Domain name matching is per RFC2109, section 2:
@@ -505,7 +525,7 @@ isdomainmatch(char *name, char *pattern)
 {
 	int lname, lpattern;
 
-	if(cistrcmp(name, pattern)==0)
+	if(cistrcmp(name, pattern + (pattern[0]=='.'))==0)
 		return 1;
 
 	if(strcmp(ipattr(name), "dom")==0 && pattern[0]=='.'){
@@ -541,13 +561,16 @@ cookiesearch(Jar *jar, char *dom, char *path, int issecure)
 {
 	int i;
 	Jar *j;
+	Cookie *c;
 	uint now;
 
 	now = time(0);
 	j = newjar();
-	for(i=0; i<jar->nc; i++)
-		if((issecure || !jar->c[i].secure) && iscookiematch(&jar->c[i], dom, path, now))
-			addcookie(j, &jar->c[i]);
+	for(i=0; i<jar->nc; i++){
+		c = &jar->c[i];
+		if(!c->deleted && (issecure || !c->secure) && iscookiematch(c, dom, path, now))
+			addcookie(j, c);
+	}
 	if(j->nc == 0){
 		closejar(j);
 		werrstr("no cookies found");
@@ -569,13 +592,13 @@ isbadcookie(Cookie *c, char *dom, char *path)
 	if(c->explicitdom && c->dom[0] != '.')
 		return "cookie domain doesn't start with dot";
 
-	if(memchr(c->dom+1, '.', strlen(c->dom)-1-1) == nil)
+	if(strlen(c->dom)<=2 || memchr(c->dom+1, '.', strlen(c->dom)-2) == nil)
 		return "cookie domain doesn't have embedded dots";
 
 	if(!isdomainmatch(dom, c->dom))
 		return "request host does not match cookie domain";
 
-	if(strcmp(ipattr(dom), "dom")==0
+	if(strcmp(ipattr(dom), "dom")==0 && strlen(dom)>strlen(c->dom)
 	&& memchr(dom, '.', strlen(dom)-strlen(c->dom)) != nil)
 		return "request host contains dots before cookie domain";
 
@@ -583,141 +606,25 @@ isbadcookie(Cookie *c, char *dom, char *path)
 }
 
 /*
+ * Parse a date in one of these formats:
  * Sunday, 25-Jan-2002 12:24:36 GMT
  * Sunday, 25 Jan 2002 12:24:36 GMT
  * Sun, 25 Jan 02 12:24:36 GMT
  */
-int
-isleap(int year)
-{
-	return year%4==0 && (year%100!=0 || year%400==0);
-}
-
 uint
 strtotime(char *s)
 {
-	char *os;
-	int i;
+	char **f, *fmts[] = {
+		"?WW, ?DD-?MM-?YYYY hh:mm:ss ?Z",
+		"?WW, ?DD ?MM ?YYYY hh:mm:ss ?Z",
+		nil,
+	};
 	Tm tm;
 
-	static int mday[2][12] = {
-		31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-		31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31,
-	};
-	static char *wday[] = {
-		"Sunday", "Monday", "Tuesday", "Wednesday",
-		"Thursday", "Friday", "Saturday",
-	};
-	static char *mon[] = {
-		"Jan", "Feb", "Mar", "Apr", "May", "Jun",
-		"Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-	};
-
-	os = s;
-	/* Sunday, */
-	for(i=0; i<nelem(wday); i++){
-		if(cistrncmp(s, wday[i], strlen(wday[i])) == 0){
-			s += strlen(wday[i]);
-			break;
-		}
-		if(cistrncmp(s, wday[i], 3) == 0){
-			s += 3;
-			break;
-		}
-	}
-	if(i==nelem(wday)){
-		if(debug)
-			fprint(2, "bad wday (%s)\n", os);
-		return -1;
-	}
-	if(*s++ != ',' || *s++ != ' '){
-		if(debug)
-			fprint(2, "bad wday separator (%s)\n", os);
-		return -1;
-	}
-
-	/* 25- */
-	if(!isdigit(s[0]) || !isdigit(s[1]) || (s[2]!='-' && s[2]!=' ')){
-		if(debug)
-			fprint(2, "bad day of month (%s)\n", os);
-		return -1;
-	}
-	tm.mday = strtol(s, 0, 10);
-	s += 3;
-
-	/* Jan- */
-	for(i=0; i<nelem(mon); i++)
-		if(cistrncmp(s, mon[i], 3) == 0){
-			tm.mon = i;
-			s += 3;
-			break;
-		}
-	if(i==nelem(mon)){
-		if(debug)
-			fprint(2, "bad month (%s)\n", os);
-		return -1;
-	}
-	if(s[0] != '-' && s[0] != ' '){
-		if(debug)
-			fprint(2, "bad month separator (%s)\n", os);
-		return -1;
-	}
-	s++;
-
-	/* 2002 */
-	if(!isdigit(s[0]) || !isdigit(s[1])){
-		if(debug)
-			fprint(2, "bad year (%s)\n", os);
-		return -1;
-	}
-	tm.year = strtol(s, 0, 10);
-	s += 2;
-	if(isdigit(s[0]) && isdigit(s[1]))
-		s += 2;
-	else{
-		if(tm.year <= 68)
-			tm.year += 2000;
-		else
-			tm.year += 1900;
-	}
-	if(tm.mday==0 || tm.mday > mday[isleap(tm.year)][tm.mon]){
-		if(debug)
-			fprint(2, "invalid day of month (%s)\n", os);
-		return -1;
-	}
-	tm.year -= 1900;
-	if(*s++ != ' '){
-		if(debug)
-			fprint(2, "bad year separator (%s)\n", os);
-		return -1;
-	}
-
-	if(!isdigit(s[0]) || !isdigit(s[1]) || s[2]!=':'
-	|| !isdigit(s[3]) || !isdigit(s[4]) || s[5]!=':'
-	|| !isdigit(s[6]) || !isdigit(s[7]) || s[8]!=' '){
-		if(debug)
-			fprint(2, "bad time (%s)\n", os);
-		return -1;
-	}
-
-	tm.hour = atoi(s);
-	tm.min = atoi(s+3);
-	tm.sec = atoi(s+6);
-	if(tm.hour >= 24 || tm.min >= 60 || tm.sec >= 60){
-		if(debug)
-			fprint(2, "invalid time (%s)\n", os);
-		return -1;
-	}
-	s += 9;
-
-	if(cistrcmp(s, "GMT") != 0){
-		if(debug)
-			fprint(2, "time zone not GMT (%s)\n", os);
-		return -1;
-	}
-	strcpy(tm.zone, "GMT");
-	tm.yday = 0;
-	return tm2sec(&tm);
+	for(f = fmts; *f != nil; f++)
+		if(tmparse(&tm, *f, s, nil, nil) != nil)
+			return tmnorm(&tm);
+	return -1;
 }
 
 /*
@@ -948,22 +855,34 @@ parsecookie(Cookie *c, char *p, char **e, int isns, char *dom, char *path)
 		if(cistrcmp(attr, "secure") == 0)
 			c->secure = 1;
 	}
+	*e = p;
 
-	if(c->dom)
+	if(c->dom){
+		/* add leading dot for explicit domain */
+		if(c->dom[0] != '.' && strcmp(ipattr(c->dom), "dom") == 0){
+			static char ddom[1024];
+
+			ddom[0] = '.';
+			ddom[sizeof(ddom)-1] = '\0';
+			strncpy(ddom+1, c->dom, sizeof(ddom)-2);
+			c->dom = ddom;
+		}
 		c->explicitdom = 1;
-	else
+	}else
 		c->dom = dom;
 	if(c->path)
 		c->explicitpath = 1;
-	else{
-		c->path = path;
-		if((t = strchr(c->path, '?')) != 0)
-			*t = '\0';
-		if((t = strrchr(c->path, '/')) != 0)
-			*t = '\0';
+	else {
+		static char dpath[1024];
+
+		/* implicit path is "directory" of request-uri's path component */
+		dpath[sizeof(dpath)-1] = '\0';
+		strncpy(dpath, path, sizeof(dpath)-1);
+		if((t = strrchr(dpath, '/')) != nil)
+			t[1] = '\0';
+		c->path = dpath;
 	}
 	c->netscapestyle = isns;
-	*e = p;
 
 	return nil;
 }
@@ -1097,9 +1016,14 @@ fswrite(Req *r)
 			p = strchr(buf+hlen, '/');
 			if(p == nil)
 				a->path = estrdup9p("/");
-			else{
+			else {
 				a->path = estrdup9p(p);
 				*p = '\0';
+
+				if((p = strchr(a->path, '#')) != nil)
+					*p = '\0';
+				if((p = strchr(a->path, '?')) != nil)
+					*p = '\0';
 			}
 			a->dom = estrdup9p(buf+hlen);
 			a->state = HaveUrl;
@@ -1113,8 +1037,7 @@ fswrite(Req *r)
 				}
 			}
 			snprint(a->outhttp, AuxBuf, "%J", j);
-			if(j)
-				closejar(j);
+			closejar(j);
 		}else{
 			if(strlen(a->inhttp)+r->ifcall.count >= AuxBuf){
 				respond(r, "http headers too large");
@@ -1176,7 +1099,8 @@ fsdestroyfid(Fid *fid)
 				delcookie(jar, &jar->c[i]);
 		break;
 	}
-	syncjar(jar);
+	if(jar->dirty)
+		syncjar(jar);
 	free(a->dom);
 	free(a->path);
 	free(a->inhttp);
@@ -1250,8 +1174,6 @@ main(int argc, char **argv)
 		strcpy(file, home);
 		strcat(file, "/lib/webcookies");
 	}
-	if(access(file, AEXIST) < 0)
-		close(create(file, OWRITE, 0666));
 
 	jar = readjar(file);
 	if(jar == nil)

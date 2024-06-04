@@ -69,6 +69,7 @@ Dirtab dirtab[]=
 	{ "editout",	QTFILE,	Qeditout,	0200 },
 	{ "index",		QTFILE,	Qindex,	0400 },
 	{ "label",		QTFILE,	Qlabel,	0600 },
+	{ "log",		QTFILE,	Qlog,	0400 },
 	{ "new",		QTDIR,	Qnew,	0500|DMDIR },
 	{ nil, }
 };
@@ -115,8 +116,6 @@ void
 fsysinit(void)
 {
 	int p[2];
-	int n, fd;
-	char buf[256];
 
 	if(pipe(p) < 0)
 		error("can't create pipe");
@@ -124,15 +123,7 @@ fsysinit(void)
 	sfd = p[1];
 	fmtinstall('F', fcallfmt);
 	clockfd = open("/dev/time", OREAD|OCEXEC);
-	fd = open("/dev/user", OREAD);
-	if(fd >= 0){
-		n = read(fd, buf, sizeof buf-1);
-		if(n > 0){
-			buf[n] = 0;
-			user = estrdup(buf);
-		}
-		close(fd);
-	}
+	user = getuser();
 	proccreate(fsysproc, nil, STACK);
 }
 
@@ -144,8 +135,6 @@ fsysproc(void *)
 	Fid *f;
 	Fcall t;
 	uchar *buf;
-
-	threadsetname("fsysproc");
 
 	x = nil;
 	for(;;){
@@ -270,13 +259,12 @@ fsysmount(Rune *dir, int ndir, Rune **incl, int nincl)
 	close(sfd);
 	m = fsysaddid(dir, ndir, incl, nincl);
 	sprint(buf, "%d", m->id);
-	if(mount(cfd, -1, "/mnt/acme", MREPL, buf) < 0){
+	if(mount(cfd, -1, "/mnt/acme", MREPL, buf) == -1){
 		fsysdelid(m);
 		return nil;
 	}
-	close(cfd);
 	bind("/mnt/acme", "/mnt/wsys", MREPL);
-	if(bind("/mnt/acme", "/dev", MBEFORE) < 0){
+	if(bind("/mnt/acme", "/dev", MBEFORE) == -1){
 		fsysdelid(m);
 		return nil;
 	}
@@ -325,12 +313,11 @@ fsysversion(Xfid *x, Fid*)
 
 	if(x->msize < 256)
 		return respond(x, &t, "version: message size too small");
-	if(x->msize < messagesize)
-		messagesize = x->msize;
+	messagesize = x->msize;
 	t.msize = messagesize;
-	if(strncmp(x->version, "9P2000", 6) != 0)
-		return respond(x, &t, "unrecognized 9P version");
 	t.version = "9P2000";
+	if(strncmp(x->version, "9P", 2) != 0)
+		t.version = "unknown";
 	return respond(x, &t, nil);
 }
 
@@ -628,7 +615,7 @@ fsysread(Xfid *x, Fid *f)
 			for(j=0; j<row.ncol; j++){
 				c = row.col[j];
 				for(k=0; k<c->nw; k++){
-					ids = erealloc(ids, (nids+1)*sizeof(int));
+					ids = realloc(ids, (nids+1)*sizeof(int));
 					ids[nids++] = c->w[k]->id;
 				}
 			}

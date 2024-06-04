@@ -1,10 +1,10 @@
 .TH ACME 1
 .SH NAME
-acme, win, awd \- interactive text windows
+acme, win \- interactive text windows
 .SH SYNOPSIS
 .B acme
 [
-.B -ab
+.B -aib
 ]
 [
 .B -c
@@ -28,11 +28,6 @@ acme, win, awd \- interactive text windows
 .B win
 [
 .I command
-]
-.LP
-.B awd
-[
-.I label
 ]
 .SH DESCRIPTION
 .I Acme
@@ -71,8 +66,7 @@ The
 .RB ( -F )
 option sets the main font, usually variable-pitch (alternate, usually fixed-pitch);
 the default is
-.B /lib/font/bit/lucidasans/euro.8.font
-.RB ( \&.../lucm/unicode.9.font ).
+.BR /lib/font/bit/vga/unicode.font .
 Tab intervals are set to the width of 4 (or the value of
 .BR $tabstop )
 numeral zeros in the appropriate font.
@@ -179,6 +173,16 @@ The option
 .B -a
 causes each window to start in 
 autoindent mode.
+.PP
+When a window is in spacesindent mode
+(see the
+.B Spaces
+command below) and a tab character is typed,
+acme indents the line with spaces equal to the current
+tabstop for the window. The option
+.B -i
+causes each window to start in spacesindent
+mode.
 .SS "Directory context
 Each window's tag names a directory: explicitly if the window
 holds a directory; implicitly if it holds a regular file
@@ -395,7 +399,6 @@ is restricted but is sufficient to run
 .IR 9fs
 (see
 .IR srv (4)),
-.IR import (4),
 etc.,
 and to set environment variables such as
 .BR $objtype .
@@ -434,6 +437,17 @@ Place selected text in snarf buffer.
 .B Sort
 Arrange the windows in the column from top to bottom in lexicographical
 order based on their names.
+.TP
+.B Spaces
+Set the spacesindent mode according to the argument:
+.B on
+and
+.B off
+set the mode for the current window;
+.B ON
+and
+.B OFF
+set the mode for all existing and future windows.
 .TP
 .B Tab
 Set the width of tab stops for this window to the value of the argument, in units of widths of the zero
@@ -624,21 +638,6 @@ Executing text in a
 window with button
 2 is similar to using
 .BR Send .
-.PP
-.I Awd
-loads the tag line of its window with the directory in which it's running, suffixed
-.BI - label
-(default
-.BR rc );
-it is
-intended to be executed by a
-.B cd
-function for use in
-.I win
-windows.  An example definition is
-.EX
-	fn cd { builtin cd $1 && awd $sysname }
-.EE
 .SS "Applications and guide files
 In the directory
 .B /acme
@@ -677,8 +676,6 @@ when it starts; this is where
 .IR acme -specific
 programs such as
 .I win
-and
-.I awd
 reside.
 .SH FILES
 .TF $home/acme.dump
@@ -707,9 +704,8 @@ MIPS-specific binaries for applications
 .B /sys/src/cmd/acme
 .br
 .B /acme/bin/source/win
-.br
-.B /sys/src/cmd/awd.c
 .SH SEE ALSO
+.IR emacs (1)
 .IR acme (4)
 .br
 Rob Pike,

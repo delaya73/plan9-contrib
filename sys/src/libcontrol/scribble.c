@@ -58,7 +58,6 @@ static void	scribshow(Scrib*);
 static void scribchar(Scrib*, Rune);
 
 static void	resetstroke(Scrib *w);
-static void	displaystroke(Scrib *w);
 static void	displaylast(Scrib *w);
 static void	addpoint(Scrib *w, Point p);
 
@@ -110,9 +109,9 @@ scribchar(Scrib *b, Rune r)
 	else if(r == ' ')
 		strcpy(b->lastchar, "' '");
 	else if(r < ' ')
-		snprint(b->lastchar, sizeof b->lastchar, "ctl-%c", r+'@');
+		sprint(b->lastchar, "ctl-%c", r+'@');
 	else
-		snprint(b->lastchar, sizeof b->lastchar, "%C", r);
+		sprint(b->lastchar, "%C", r);
 }
 
 
@@ -166,7 +165,6 @@ scribctl(Control *c, CParse *cp)
 	cmd = _ctllookup(cp->args[0], cmds, nelem(cmds));
 	switch(cmd){
 	default:
-		abort();
 		ctlerror("%q: unrecognized message '%s'", b->name, cp->str);
 		break;
 	case EAlign:
@@ -245,15 +243,6 @@ resetstroke(Scrib *w)
 
 	s->ps.npts = 0;
 	scribshow(w);
-}
-
-static void
-displaystroke(Scrib *b)
-{
-	Scribble *s = b->scrib;
-
-	poly(b->screen, s->pt, s->ps.npts, Endsquare, Endsquare, 0, b->color->image, ZP);
-	flushimage(display, 1);
 }
 
 static void

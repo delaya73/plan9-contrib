@@ -8,6 +8,7 @@ enum
 	Qeditout,
 	Qindex,
 	Qlabel,
+	Qlog,
 	Qnew,
 
 	QWaddr,
@@ -27,7 +28,7 @@ enum
 enum
 {
 	Blockincr =	256,
-	Maxblock = 	16*1024,
+	Maxblock = 	8*1024,
 	NRange =		10,
 	Infinity = 		0x7FFFFFFF,	/* huge value for regexp address */
 };
@@ -68,7 +69,7 @@ struct Range
 
 struct Block
 {
-	uint		addr;	/* disk address in bytes */
+	vlong		addr;	/* disk address in bytes */
 	union
 	{
 		uint	n;		/* number of used runes in block */
@@ -79,7 +80,7 @@ struct Block
 struct Disk
 {
 	int		fd;
-	uint		addr;	/* length of temp file */
+	vlong		addr;	/* length of temp file */
 	Block	*free[Maxblock/Blockincr+1];
 };
 
@@ -191,6 +192,7 @@ struct Text
 	int		ncachealloc;
 	Rune	*cache;
 	int	nofill;
+	int	needundo;
 };
 
 uint		textbacknl(Text*, uint, uint);
@@ -202,7 +204,7 @@ void		textcolumnate(Text*, Dirlist**, int);
 void		textcommit(Text*, int);
 void		textconstrain(Text*, uint, uint, uint*, uint*);
 void		textdelete(Text*, uint, uint, int);
-void		textdoubleclick(Text*, uint*, uint*);
+void		textstretchsel(Text*, uint, uint*, uint*, int);
 void		textfill(Text*);
 void		textframescroll(Text*, int);
 void		textinit(Text*, File*, Rectangle, Reffont*, Image**);
@@ -223,6 +225,13 @@ void		textsetselect(Text*, uint, uint);
 void		textshow(Text*, uint, uint, int);
 void		texttype(Text*, Rune);
 
+enum
+{
+	SPACESINDENT	= 0,
+	AUTOINDENT,
+	NINDENT,
+};
+
 struct Window
 {
 		QLock;
@@ -234,7 +243,7 @@ struct Window
 	uchar	isscratch;
 	uchar	filemenu;
 	uchar	dirty;
-	uchar	autoindent;
+	uchar	indent[NINDENT];
 	uchar	showdel;
 	int		id;
 	Range	addr;
@@ -268,7 +277,6 @@ struct Window
 	int		tagexpand;
 	int		taglines;
 	Rectangle	tagtop;
-	QLock	editoutlk;
 };
 
 void	wininit(Window*, Window*, Rectangle);
@@ -388,6 +396,7 @@ struct Fid
 	Mntdir	*mntdir;
 	int		nrpart;
 	uchar	rpart[UTFmax];
+	vlong	logoff;	// for putlog
 };
 
 
@@ -400,7 +409,6 @@ struct Xfid
 	Fid	*f;
 	uchar	*buf;
 	int	flushed;
-
 };
 
 void		xfidctl(void *);
@@ -415,6 +423,10 @@ void		xfideventwrite(Xfid*, Window*);
 void		xfidindexread(Xfid*);
 void		xfidutfread(Xfid*, Text*, uint, int);
 int		xfidruneread(Xfid*, Text*, uint, uint);
+void		xfidlogopen(Xfid*);
+void		xfidlogread(Xfid*);
+void		xfidlogflush(Xfid*);
+void		xfidlog(Window*, char*);
 
 struct Reffont
 {
@@ -525,6 +537,7 @@ Column		*activecol;
 Buffer		snarfbuf;
 Rectangle		nullrect;
 int			fsyspid;
+char			*user;
 char			*cputype;
 char			*objtype;
 char			*home;
@@ -537,13 +550,8 @@ int			plumbeditfd;
 char			wdir[];
 int			editing;
 int			messagesize;		/* negotiated in 9P version setup */
-int			globalautoindent;
-
-enum
-{
-	Kscrolloneup		= KF|0x20,
-	Kscrollonedown	= KF|0x21,
-};
+int			globalindent[NINDENT];
+Rune		*delcmd;			/* what command deleted the window. eg, Del, Delete, Delmesg */
 
 Channel	*cplumb;		/* chan(Plumbmsg*) */
 Channel	*cwait;		/* chan(Waitmsg) */

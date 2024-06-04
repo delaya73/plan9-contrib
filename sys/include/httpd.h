@@ -249,7 +249,6 @@ void			hokheaders(HConnect *c);
 int			hparseheaders(HConnect*, int timeout);
 HSPairs			*hparsequery(HConnect *c, char *search);
 int			hparsereq(HConnect *c, int timeout);
-int			hparseuri(HConnect*, char*);
 int			hprint(Hio*, char*, ...);
 int			hputc(Hio*, int);
 void			*hreadbuf(Hio *h, void *vsave);
@@ -266,6 +265,7 @@ int			hungetc(Hio *h);
 char			*hunload(Hio*);
 int			hurlfmt(Fmt*);
 char			*hurlunesc(HConnect *c, char *s);
+int			hvprint(Hio *, char*, va_list);
 int			hwrite(Hio*, void*, int);
 int			hxferenc(Hio*, int);
 

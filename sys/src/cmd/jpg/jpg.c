@@ -3,6 +3,7 @@
 #include <bio.h>
 #include <draw.h>
 #include <event.h>
+#include <keyboard.h>
 #include "imagefile.h"
 
 int		cflag = 0;
@@ -26,6 +27,16 @@ enum{
 
 char	*show(int, char*, int);
 
+Rectangle
+imager(Image *i)
+{
+	Point p1, p2;
+
+	p1 = addpt(divpt(subpt(i->r.max, i->r.min), 2), i->r.min);
+	p2 = addpt(divpt(subpt(screen->clipr.max, screen->clipr.min), 2), screen->clipr.min);
+	return rectaddpt(i->r, subpt(p2, p1));
+}
+
 void
 eresized(int new)
 {
@@ -37,9 +48,7 @@ eresized(int new)
 	}
 	if(image == nil)
 		return;
-	r = insetrect(screen->clipr, Edge+Border);
-	r.max.x = r.min.x+Dx(image->r);
-	r.max.y = r.min.y+Dy(image->r);
+	r = imager(image);
 	border(screen, r, -Border, nil, ZP);
 	drawop(screen, r, image, nil, image->r.min, S);
 	flushimage(display, 1);
@@ -110,13 +119,13 @@ main(int argc, char *argv[])
 			outchan = CMAP8;
 		break;
 	default:
-		fprint(2, "usage: jpg -39cdefFkJrtv [file.jpg ...]\n");
+		fprint(2, "usage: jpg -39cdefFkJrtvy [file.jpg ...]\n");
 		exits("usage");
 	}ARGEND;
 
 	if(yflag==0 && dflag==0 && colorspace==CYCbCr){	/* see if we should convert right to RGB */
 		fd = open("/dev/screen", OREAD);
-		if(fd > 0){
+		if(fd >= 0){
 			buf[12] = '\0';
 			if(read(fd, buf, 12)==12 && chantodepth(strtochan(buf))>8)
 				colorspace = CRGB;
@@ -169,7 +178,7 @@ vidmerge(Rawimage **aa1, Rawimage **aa2)
 		aao[i+1] = nil;
 		ao = aao[i] = malloc(sizeof(Rawimage));
 		if (ao == nil){
-			fprint(2, "jpg: vidmerge: realloc\n");
+			fprint(2, "jpg: vidmerge: malloc\n");
 			return nil;
 		}
 		memcpy(ao, a1, sizeof(Rawimage));
@@ -201,6 +210,10 @@ vidmerge(Rawimage **aa1, Rawimage **aa2)
 			uchar *po, *p1, *p2;
 
 			ao->chans[c] = malloc(ao->chanlen);
+			if (ao->chans[c] == nil){
+				fprint(2, "jpg: vidmerge: malloc chan\n");
+				return nil;
+			}
 			po = ao->chans[c];
 			p1 = a1->chans[c];
 			p2 = a2->chans[c];
@@ -309,7 +322,7 @@ rpt:	array = Breadjpg(&b, colorspace);
 			free(array);
 			goto rpt;
 		}
-		if((ch=ekbd())=='q' || ch==0x7F || ch==0x04)
+		if((ch=ekbd())=='q' || ch==Kdel || ch==Keof)
 			exits(nil);
 		draw(screen, screen->clipr, display->white, nil, ZP);
 		image = nil;
