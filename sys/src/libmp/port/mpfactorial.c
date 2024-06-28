@@ -1,6 +1,5 @@
 #include "os.h"
 #include <mp.h>
-#include <libsec.h>
 #include "dat.h"
 
 mpint*
@@ -42,7 +41,7 @@ mpfactorial(ulong n)
 				max++;
 				if(max > mmax){
 					mmax++;
-					if(max >= nelem(stk))
+					if(max > nelem(stk))
 						abort();
 					stk[max] = mpnew(Dbits);
 				}
