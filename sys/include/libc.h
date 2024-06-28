@@ -408,12 +408,20 @@ extern	double	charstod(int(*)(void*), void*);
 extern	char*	cleanname(char*);
 extern	int	decrypt(void*, void*, int);
 extern	int	encrypt(void*, void*, int);
+
 extern	int	dec64(uchar*, int, char*, int);
 extern	int	enc64(char*, int, uchar*, int);
 extern	int	dec32(uchar*, int, char*, int);
 extern	int	enc32(char*, int, uchar*, int);
 extern	int	dec16(uchar*, int, char*, int);
 extern	int	enc16(char*, int, uchar*, int);
+extern	int	dec64chr(int);
+extern	int	enc64chr(int);
+extern	int	dec32chr(int);
+extern	int	enc32chr(int);
+extern	int	dec16chr(int);
+extern	int	enc16chr(int);
+
 extern	int	encodefmt(Fmt*);
 extern	void	exits(char*);
 extern	double	frexp(double, int*);

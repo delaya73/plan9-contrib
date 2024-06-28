@@ -152,6 +152,13 @@ int  enc32(char *, int, uchar *, int);
 int  dec64(uchar *, int, char *, int);
 int  enc64(char *, int, uchar *, int);
 
+extern	int	dec64chr(int);
+extern	int	enc64chr(int);
+extern	int	dec32chr(int);
+extern	int	enc32chr(int);
+extern	int	dec16chr(int);
+extern	int	enc16chr(int);
+
 extern	int	idn2utf(char *, char *, int);
 extern	int	utf2idn(char *, char *, int);
 
