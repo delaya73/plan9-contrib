@@ -8,12 +8,15 @@ FILES=\
 	mpfmt\
 	strtomp\
 	mptobe\
+	mptober\
 	mptole\
+	mptolel\
 	betomp\
 	letomp\
 	mpadd\
 	mpsub\
 	mpcmp\
+	mpsel\
 	mpfactorial\
 	mpmul\
 	mpleft\
@@ -22,23 +25,33 @@ FILES=\
 	mpvecsub\
 	mpvecdigmuladd\
 	mpveccmp\
+	mpvectscmp\
 	mpdigdiv\
 	mpdiv\
 	mpexp\
 	mpmod\
+	mpmodop\
 	mpextendedgcd\
 	mpinvert\
 	mprand\
+	mpnrand\
 	crt\
 	mptoi\
 	mptoui\
 	mptov\
 	mptouv\
+	mpfield\
+	cnfield\
+	gmfield\
+	mplogic\
 
 ALLOFILES=${FILES:%=%.$O}
 
 # cull things in the per-machine directories from this list
-OFILES=	`{rc ./reduce $O $objtype $ALLOFILES}
+OFILES=	`{rfork en; \
+	if(~ $objtype spim) objtype=mips; \
+	bind -a ../../../../libmp/$objtype ../$objtype; \
+	rc ../../../../libmp/port/reduce $O $objtype $ALLOFILES}
 
 HFILES=\
 	/sys/include/ape/mp.h\
@@ -53,7 +66,7 @@ UPDATE=\
 
 </sys/src/cmd/mksyslib
 
-CFLAGS=$CFLAGS -c -+ -D_POSIX_SOURCE -D_PLAN9_SOURCE -I. -I../../../libmp/port -I/sys/include/ape -I/sys/include
+CFLAGS=-TVwc -+ -D_POSIX_SOURCE -D_PLAN9_SOURCE -I. -I../../9
 
 %.$O:	../../../../libmp/port/%.c
 	$CC $CFLAGS ../../../../libmp/port/$stem.c

@@ -1,7 +1,6 @@
 #include <u.h>
 #include <libc.h>
 #include <mp.h>
-#include <libsec.h>
 
 char *sfactors[] =
 {	"3", "5", "17", "257", "641", "65537", "274177", "2424833", "6700417", "45592577",
@@ -52,7 +51,7 @@ main(int argc, char **argv)
 	int i;
 
 	start = time(0);
-	fmtinstall('B', mpconv);
+	fmtinstall('B', mpfmt);
 	mpsetminbits(2*Dbits);
 
 	x = mpnew(0);

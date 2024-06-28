@@ -1,8 +1,7 @@
 objtype=mips
-</mips/mkfile
+</$objtype/mkfile
 
 LIB=/$objtype/lib/libmp.a
-# can't use this mpdigdiv.s on mips32 cpus
 SFILES=\
 	mpvecadd.s\
 	mpvecsub.s\

@@ -13,19 +13,18 @@ uvtomp(uvlong v, mpint *b)
 {
 	int s;
 
-	if(b == nil)
-		b = mpnew(VLDIGITS*sizeof(mpdigit));
-	else
-		mpbits(b, VLDIGITS*sizeof(mpdigit));
-	mpassign(mpzero, b);
-	if(v == 0)
-		return b;
-	for(s = 0; s < VLDIGITS && v != 0; s++){
+	if(b == nil){
+		b = mpnew(VLDIGITS*Dbits);
+		setmalloctag(b, getcallerpc(&v));
+	}else
+		mpbits(b, VLDIGITS*Dbits);
+	b->sign = 1;
+	for(s = 0; s < VLDIGITS; s++){
 		b->p[s] = v;
 		v >>= sizeof(mpdigit)*8;
 	}
 	b->top = s;
-	return b;
+	return mpnorm(b);
 }
 
 uvlong
@@ -34,12 +33,11 @@ mptouv(mpint *b)
 	uvlong v;
 	int s;
 
-	if(b->top == 0)
+	if(b->top == 0 || b->sign < 0)
 		return 0LL;
 
-	mpnorm(b);
 	if(b->top > VLDIGITS)
-		return MAXVLONG;
+		return -1LL;
 
 	v = 0ULL;
 	for(s = 0; s < b->top; s++)

@@ -5,9 +5,9 @@ LIB=/$objtype/lib/ape/libmp.a
 
 SFILES=\
 	mpvecadd.s\
+	mpvecsub.s\
 	mpvecdigmuladd.s\
 	mpvecdigmulsub.s\
-	mpvecsub.s\
 #	mpdigdiv.s\
 
 HFILES=\

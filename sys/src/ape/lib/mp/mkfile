@@ -26,21 +26,21 @@ installall:V:
 	for(objtype in $CPUS) mk $MKFLAGS install
 
 everything:V:
-	rm -f */*.[012456789kvx]
+	rm -f */*.[$OS]
 	for(objtype in 386)@{
 		echo $objtype
 		mk $MKFLAGS install
 	}
-	rm -f */*.[012456789kvx]
+	rm -f */*.[$OS]
 
 test.$O: ../../../libmp/test.c /sys/include/ape/mp.h ../../../libmp/port/dat.h
-	$CC -D_POSIX_SOURCE -D_PLAN9_SOURCE -Iport -I../../../libmp/port ../../../libmp/test.c
+	$CC -c -D_POSIX_SOURCE -D_PLAN9_SOURCE -I../9 -I../../../libmp/port ../../../libmp/test.c
 
 $O.test: test.$O /$objtype/lib/ape/libmp.a
 	$LD -o $O.test test.$O
 
 bigtest.$O: ../../../libmp/bigtest.c /sys/include/ape/mp.h ../../../libmp/port/dat.h
-	$CC -D_POSIX_SOURCE -D_PLAN9_SOURCE -Iport -I../../../libmp/port ../../../libmp/bigtest.c
+	$CC -c -D_POSIX_SOURCE -D_PLAN9_SOURCE -I../9 -I../../../libmp/port ../../../libmp/bigtest.c
 
 $O.bigtest: bigtest.$O /$objtype/lib/ape/libmp.a
 	$LD -o $O.bigtest bigtest.$O
