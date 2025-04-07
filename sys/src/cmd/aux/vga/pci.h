@@ -104,3 +104,5 @@ typedef struct Pcidev {
 	Pcidev*	bridge;			/* down a bus */
 	Pcidev*	link;			/* next device on this bno */
 };
+
+extern void vgactlpci(Pcidev *);

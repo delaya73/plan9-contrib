@@ -11,6 +11,7 @@ static int iobfd = -1;
 static int iowfd = -1;
 static int iolfd = -1;
 static int biosfd = -1;
+static int msrfd = -1;
 static ulong biosoffset = 0;
 
 enum {
@@ -106,6 +107,29 @@ outportl(long port, ulong data)
 		error("outportl(0x%4.4lx, 0x%2.2luX): %r\n", port, data);
 }
 
+uvlong
+rdmsr(long port)
+{
+	uvlong data;
+
+	if(msrfd == -1)
+		msrfd = devopen("#P/msr", ORDWR);
+
+	if(pread(msrfd, &data, sizeof(data), port) != sizeof(data))
+		error("rdmsr(0x%4.4lx): %r\n", port);
+	return data;
+}
+
+void
+wrmsr(long port, uvlong data)
+{
+	if(msrfd == -1)
+		msrfd = devopen("#P/msr", ORDWR);
+
+	if(pwrite(msrfd, &data, sizeof(data), port) != sizeof(data))
+		error("wrmsr(0x%4.4lx, 0x%2.2lluX): %r\n", port, data);
+}
+
 static void
 vgactlinit(void)
 {
@@ -185,6 +209,24 @@ vgactlw(char* attr, char* val)
 	if(write(ctlfd, buf, len) != len)
 		error("vgactlw: <%s>: %r\n",  buf);
 	trace("-vgactlw %s\n", buf);
+
+	ctlclean = 0;
+}
+
+void
+vgactlpci(Pcidev *p)
+{
+	char buf[64];
+	int len;
+
+	if(p == nil)
+		return;
+	if(ctlfd == -1)
+		ctlfd = devopen("#v/vgactl", ORDWR);
+	len = snprint(buf, sizeof(buf), "pcidev %lux", (ulong)p->tbdf);
+	seek(ctlfd, 0, 0);
+	/* ignore error for old kernel */
+	write(ctlfd, buf, len);
 
 	ctlclean = 0;
 }

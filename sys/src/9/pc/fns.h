@@ -160,7 +160,7 @@ void	putcr0(ulong);
 void	putcr3(ulong);
 void	putcr4(ulong);
 void*	rampage(void);
-void	rdmsr(int, vlong*);
+int	rdmsr(int, vlong*);
 void	realmode(Ureg*);
 void	screeninit(void);
 void	(*screenputs)(char*, int);
@@ -190,7 +190,7 @@ void*	vmap(ulong, int);
 int	vmapsync(ulong);
 void	vunmap(void*, int);
 void	wbinvd(void);
-void	wrmsr(int, vlong);
+int	wrmsr(int, vlong);
 int	xchgw(ushort*, int);
 
 #define PTR2UINT(p)	((uintptr)(p))
