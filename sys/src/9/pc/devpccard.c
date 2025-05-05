@@ -912,7 +912,7 @@ unconfigure(Cardbus *cb)
 			if (pci->mem[i].size == 0)
 				continue;
 			if (pci->mem[i].bar & 1) {
-				iofree(pci->mem[i].bar & ~1);
+				iofree(pci->mem[i].bar & ~3);
 				pcicfgw16(cb->pci, PciCBIBR0 + ioindex * 8,
 						 (ushort)-1);
 				pcicfgw16(cb->pci, PciCBILR0 + ioindex * 8, 0);

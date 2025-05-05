@@ -951,7 +951,7 @@ vgbepci(void)
 			continue;
 		}
 
-		port &= 0xfffe;
+		port &= 0xfffc;
 
 		if(size != 256){
 			print("vgbe: invalid io size: %d\n", size);

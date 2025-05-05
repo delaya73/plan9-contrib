@@ -21,7 +21,7 @@ uartpci(int ctlrno, Pcidev* p, int barno, int n, int freq, char* name,
 	char buf[64];
 	Uart *head, *uart;
 
-	io = p->mem[barno].bar & ~0x01;
+	io = p->mem[barno].bar & ~3;
 	snprint(buf, sizeof(buf), "%s%d", pciphysuart.name, ctlrno);
 	if(ioalloc(io, p->mem[barno].size, 0, buf) < 0){
 		print("uartpci: I/O 0x%uX in use\n", io);

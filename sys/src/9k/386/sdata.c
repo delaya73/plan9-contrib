@@ -359,7 +359,7 @@ pc87415ienable(Ctlr* ctlr)
 		return;
 
 	x = pcicfgr32(p, 0x40);
-	if(ctlr->cmdport == p->mem[0].bar)
+	if(ctlr->cmdport == (p->mem[0].bar & ~3))
 		x &= ~0x00000100;
 	else
 		x &= ~0x00000200;
@@ -2087,8 +2087,8 @@ atapnp(void)
 
 		for(channel = 0; channel < 2; channel++){
 			if(pi & (1<<(2*channel))){
-				sdev = ataprobe(p->mem[0+2*channel].bar & ~0x01,
-						p->mem[1+2*channel].bar & ~0x01,
+				sdev = ataprobe(p->mem[0+2*channel].bar & ~3,
+						p->mem[1+2*channel].bar & ~3,
 						p->intl);
 				if(sdev == nil)
 					continue;
@@ -2117,7 +2117,7 @@ atapnp(void)
 			ctlr->irqack = irqack;
 			if(!(pi & 0x80))
 				continue;
-			ctlr->bmiba = (p->mem[4].bar & ~0x01) + channel*8;
+			ctlr->bmiba = (p->mem[4].bar & ~3) + channel*8;
 		}
 	}
 

@@ -1149,7 +1149,7 @@ rtl8169pci(void)
 			break;
 		}
 
-		port = p->mem[0].bar & ~0x01;
+		port = p->mem[0].bar & ~3;
 		if(ioalloc(port, p->mem[0].size, 0, "rtl8169") < 0){
 			print("rtl8169: port %#ux in use\n", port);
 			continue;

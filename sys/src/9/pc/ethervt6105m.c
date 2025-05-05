@@ -1115,7 +1115,7 @@ vt6105Mpci(void)
 {
 	Pcidev *p;
 	Ctlr *ctlr;
-	int cls, port;
+	int port;
 
 	p = nil;
 	while(p = pcimatch(p, 0, 0)){
@@ -1129,7 +1129,7 @@ vt6105Mpci(void)
 			break;
 		}
 
-		port = p->mem[0].bar & ~0x01;
+		port = p->mem[0].bar & ~3;
 		if(ioalloc(port, p->mem[0].size, 0, "vt6105M") < 0){
 			print("vt6105M: port 0x%uX in use\n", port);
 			continue;
@@ -1142,9 +1142,7 @@ vt6105Mpci(void)
 		ctlr->port = port;
 		ctlr->pcidev = p;
 		ctlr->id = (p->did<<16)|p->vid;
-		if((cls = pcicfgr8(p, PciCLS)) == 0 || cls == 0xFF)
-			cls = 0x10;
-		ctlr->cls = cls*4;
+		ctlr->cls = p->cls*4;
 		if(ctlr->cls < sizeof(Ds)){
 			print("vt6105M: cls %d < sizeof(Ds)\n", ctlr->cls);
 			iofree(port);

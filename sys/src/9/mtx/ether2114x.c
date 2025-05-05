@@ -1521,7 +1521,7 @@ dec2114xpci(void)
 		 * bar[1] is the memory-mapped register address.
 		 */
 		ctlr = malloc(sizeof(Ctlr));
-		ctlr->port = p->mem[0].bar & ~0x01;
+		ctlr->port = p->mem[0].bar & ~3;
 		ctlr->pcidev = p;
 		ctlr->id = (p->did<<16)|p->vid;
 

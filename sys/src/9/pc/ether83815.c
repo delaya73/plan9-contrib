@@ -893,7 +893,7 @@ sisrdcmos(Ctlr *ctlr)
 			ctlr->pcidev->rid);
 		return 0;
 	}
-	port = p->mem[0].bar & ~0x01;
+	port = p->mem[0].bar & ~3;
 	debug("ns83815: SiS 630 rev. %ux reading mac addr from cmos via bridge at port 0x%lux\n", ctlr->pcidev->rid, port);
 
 	reg = pcicfgr8(p, MagicReg);
@@ -1070,7 +1070,7 @@ scanpci83815(void)
 		ctlr = malloc(sizeof(Ctlr));
 		if(ctlr == nil)
 			error(Enomem);
-		ctlr->port = p->mem[0].bar & ~0x01;
+		ctlr->port = p->mem[0].bar & ~3;
 		ctlr->pcidev = p;
 		ctlr->id = id;
 

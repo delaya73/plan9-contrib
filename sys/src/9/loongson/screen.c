@@ -586,7 +586,7 @@ fbenable(void)
 	ctlr->pcidev = p;
 	ctlr->paddr = PCIMEMADDR(p->mem[0].bar & ~0x0f);
 	ctlr->vaddr = KSEG1ADDR(ctlr->paddr);
-	ctlr->port = p->mem[1].bar & ~0x01;
+	ctlr->port = p->mem[1].bar & ~3;
 	ctlr->mmio = KSEG1ADDR(PCIMEMADDR(p->mem[2].bar & ~0x0f));
 }
 

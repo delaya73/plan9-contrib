@@ -1269,8 +1269,7 @@ gc82543pci(void)
 			print("gc82543: can't map %8.8luX\n", p->mem[0].bar);
 			continue;
 		}
-		cls = pcicfgr8(p, PciCLS);
-		switch(cls){
+		switch(p->cls){
 		default:
 			print("82543gc: p->cls %#ux, setting to 0x10\n", p->cls);
 			p->cls = 0x10;

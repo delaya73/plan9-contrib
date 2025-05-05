@@ -1476,7 +1476,7 @@ tcm59Xpci(void)
 		 */
 		if(!(p->mem[0].bar & 0x01))
 			continue;
-		port = p->mem[0].bar & ~0x01;
+		port = p->mem[0].bar & ~3;
 		if((port = ioalloc((port == 0)? -1: port,  p->mem[0].size, 
 					  0, "tcm59Xpci")) < 0){
 			print("tcm59Xpci: port 0x%uX in use\n", port);

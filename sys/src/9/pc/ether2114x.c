@@ -1669,7 +1669,7 @@ dec2114xpci(void)
 		ctlr = malloc(sizeof(Ctlr));
 		if(ctlr == nil)
 			error(Enomem);
-		ctlr->port = p->mem[0].bar & ~0x01;
+		ctlr->port = p->mem[0].bar & ~3;
 		ctlr->pcidev = p;
 		ctlr->id = (p->did<<16)|p->vid;
 

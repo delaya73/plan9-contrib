@@ -972,7 +972,7 @@ i82557pci(void)
 		 * bar[1] is the I/O port register address (32 bytes) and
 		 * bar[2] is for the flash ROM (1MB).
 		 */
-		port = p->mem[1].bar & ~0x01;
+		port = p->mem[1].bar & ~3;
 		if(ioalloc(port, p->mem[1].size, 0, "i82557") < 0){
 			print("i82557: port %#ux in use\n", port);
 			continue;

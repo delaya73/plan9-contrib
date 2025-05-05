@@ -2090,7 +2090,7 @@ scanpci(void)
 			continue;
 		switch(p->ccrp){
 		case 0:
-			io = p->mem[4].bar & ~0x0F;
+			io = p->mem[4].bar & ~3;
 			break;
 		default:
 			continue;

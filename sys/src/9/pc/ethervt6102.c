@@ -954,7 +954,7 @@ vt6102pci(void)
 {
 	Pcidev *p;
 	Ctlr *ctlr;
-	int cls, port;
+	int port;
 
 	p = nil;
 	while(p = pcimatch(p, 0, 0)){
@@ -969,7 +969,7 @@ vt6102pci(void)
 			break;
 		}
 
-		port = p->mem[0].bar & ~0x01;
+		port = p->mem[0].bar & ~3;
 		if(ioalloc(port, p->mem[0].size, 0, "vt6102") < 0){
 			print("vt6102: port 0x%uX in use\n", port);
 			continue;
@@ -982,9 +982,7 @@ vt6102pci(void)
 		ctlr->port = port;
 		ctlr->pcidev = p;
 		ctlr->id = (p->did<<16)|p->vid;
-		if((cls = pcicfgr8(p, PciCLS)) == 0 || cls == 0xFF)
-			cls = 0x10;
-		ctlr->cls = cls*4;
+		ctlr->cls = p->cls*4;
 		if(ctlr->cls < sizeof(Ds)){
 			print("vt6102: cls %d < sizeof(Ds)\n", ctlr->cls);
 			iofree(port);

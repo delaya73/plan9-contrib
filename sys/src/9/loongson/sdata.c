@@ -2047,8 +2047,8 @@ atapnp(void)
 
 		for(channel = 0; channel < 2; channel++){
 			if(pi & (1<<(2*channel))){
-				sdev = ataprobe(p->mem[0+2*channel].bar & ~0x01,
-						p->mem[1+2*channel].bar & ~0x01,
+				sdev = ataprobe(p->mem[0+2*channel].bar & ~3,
+						p->mem[1+2*channel].bar & ~3,
 						ILpci, pcisubirq(p->tbdf));
 				if(sdev == nil)
 					continue;
@@ -2077,7 +2077,7 @@ atapnp(void)
 			ctlr->irqack = irqack;
 			if(!(pi & 0x80))
 				continue;
-			ctlr->bmiba = (p->mem[4].bar & ~0x01) + channel*8;
+			ctlr->bmiba = (p->mem[4].bar & ~3) + channel*8;
 		}
 	}
 

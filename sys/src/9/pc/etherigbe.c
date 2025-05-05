@@ -1952,7 +1952,6 @@ igbereset(Ctlr* ctlr)
 static void
 igbepci(void)
 {
-	int cls;
 	Pcidev *p;
 	Ctlr *ctlr;
 	void *mem;
@@ -1989,8 +1988,7 @@ igbepci(void)
 			print("igbe: can't map %8.8luX\n", p->mem[0].bar);
 			continue;
 		}
-		cls = pcicfgr8(p, PciCLS);
-		switch(cls){
+		switch(p->cls){
 		default:
 			print("igbe: p->cls %#ux, setting to 0x10\n", p->cls);
 			p->cls = 0x10;
@@ -2008,7 +2006,7 @@ igbepci(void)
 		ctlr->port = p->mem[0].bar & ~0x0F;
 		ctlr->pcidev = p;
 		ctlr->id = (p->did<<16)|p->vid;
-		ctlr->cls = cls*4;
+		ctlr->cls = p->cls*4;
 		ctlr->nic = mem;
 
 		if(igbereset(ctlr)){
