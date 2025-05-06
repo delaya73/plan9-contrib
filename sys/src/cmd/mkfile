@@ -8,10 +8,8 @@ LDFLAGS=
 YFLAGS=-d
 
 NOTSYS=sml|dup|.+\..+
-BUGGERED=unix
-OUTOFDATE=old
 
-NOMK=$NOTSYS|$BUGGERED|$OUTOFDATE
+NOMK=$NOTSYS
 
 cpuobjtype=`{sed -n 's/^O=//p' /$cputype/mkfile}
 DIRS=`{ls -l | sed '/^d/!d; s/.* //; /^('$NOMK')$/d'}
