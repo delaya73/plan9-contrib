@@ -11,6 +11,14 @@ awk \- pattern-directed scanning and processing language
 .B -d
 ]
 [
+.BI -mf
+.I n
+]
+[
+.B -mr
+.I n
+]
+[
 .B -safe
 ]
 [
@@ -79,6 +87,27 @@ refers to the entire line.
 If
 .BR FS
 is null, the input line is split into one field per character.
+.PP
+To compensate for inadequate implementation of storage management,
+the 
+.B -mr
+option can be used to set the maximum size of the input record,
+and the
+.B -mf
+option to set the maximum number of fields.
+.PP
+The
+.B -safe
+option causes
+.I awk
+to run in 
+``safe mode,''
+in which it is not allowed to 
+run shell commands or open files
+and the environment is not made available
+in the 
+.B ENVIRON
+variable.
 .PP
 A pattern-action statement has the form
 .IP
@@ -214,6 +243,13 @@ converts its numerical argument, a character number, to a
 .SM UTF
 string
 .TP
+.BI substr( s , " m")
+the maximum length substring of
+.I s
+that begins at position
+.IR m
+counted from 1.
+.TP
 .BI substr( s , " m" , " n\fL)
 the
 .IR n -character
@@ -222,12 +258,6 @@ substring of
 that begins at position
 .IR m 
 counted from 1.
-If
-.I n
-is omitted, it is taken to be the length of
-.I s
-from
-.IR m .
 .TP
 .BI index( s , " t" )
 the position in
@@ -280,18 +310,10 @@ If
 is not given,
 .B $0
 is used.
-A
-.L &
-character in
+.B &
+in
 .I t
-will be replaced by the sub-string of
-.I s
-matched by
-.IR r ;
-it may be escaped with
-.L \e
-to substitute a literal
-.LR & .
+is replaced by the match.
 .TP
 .B gsub
 same as

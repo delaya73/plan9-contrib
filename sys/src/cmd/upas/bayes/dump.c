@@ -1,8 +1,8 @@
 #include <u.h>
 #include <libc.h>
 #include <bio.h>
-#include <regexp.h>
-#include "/sys/src/libregexp/regcomp.h"
+#include "regexp.h"
+#include "regcomp.h"
 #include "dfa.h"
 
 #define DUMP

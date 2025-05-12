@@ -1,212 +1,185 @@
 #include <u.h>
 #include <libc.h>
-#include "regexp.h"
-#include "regcomp.h"
+#include <regexp.h>
+#include "regimpl.h"
 
-/*
- *  return	0 if no match
- *		>0 if a match
- *		<0 if we ran out of _relist space
- */
-static int
-rregexec1(Reprog *progp,	/* program to run */
-	Rune *bol,		/* string to run machine on */
-	Resub *mp,		/* subexpression elements */
-	int ms,			/* number of elements at mp */
-	Reljunk *j)
+typedef struct RethreadQ RethreadQ;
+struct RethreadQ {
+	Rethread *head;
+	Rethread **tail;
+};
+
+int
+rregexec(Reprog *p, Rune *str, Resub *sem, int msize)
 {
-	int flag=0;
-	Reinst *inst;
-	Relist *tlp;
-	Rune *s;
-	int i, checkstart;
-	Rune r, *rp, *ep;
-	Relist* tl;		/* This list, next list */
-	Relist* nl;
-	Relist* tle;		/* ends of this and next list */
-	Relist* nle;
-	int match;
-	Rune *p;
+	RethreadQ lists[2], *clist, *nlist, *tmp;
+	Rethread *t, *next, *pool, *avail;
+	Reinst *ci;
+	Rune *rsp, *rep, endr, r;
+	int matchgen, gen;
 
-	match = 0;
-	checkstart = j->startchar;
-	if(mp)
-		for(i=0; i<ms; i++) {
-			mp[i].rsp = 0;
-			mp[i].rep = 0;
+	memset(p->threads, 0, sizeof(Rethread)*p->nthr);
+	if(msize > NSUBEXPM)
+		msize = NSUBEXPM;
+	if(p->startinst->gen != 0) {
+		for(ci = p->startinst; ci < p->startinst + p->len; ci++)
+			ci->gen = 0;
+	}
+
+	clist = lists;
+	clist->head = nil;
+	clist->tail = &clist->head;
+	nlist = lists + 1;
+	nlist->head = nil;
+	nlist->tail = &nlist->head;
+
+	pool = p->threads;
+	avail = nil;
+	gen = matchgen = 0;
+
+	rsp = str;
+	rep = nil;
+	endr = L'\0';
+	if(sem != nil && msize > 0) {
+		if(sem->rsp != nil)
+			rsp = sem->rsp;
+		if(sem->rep != nil && *sem->rep != L'\0') {
+			rep = sem->rep;
+			endr = *sem->rep;
+			*sem->rep = '\0';
 		}
-	j->relist[0][0].inst = 0;
-	j->relist[1][0].inst = 0;
+	}
 
-	/* Execute machine once for each character, including terminal NUL */
-	s = j->rstarts;
-	do{
-		/* fast check for first char */
-		if(checkstart) {
-			switch(j->starttype) {
-			case RUNE:
-				p = runestrchr(s, j->startchar);
-				if(p == 0 || s == j->reol)
-					return match;
-				s = p;
-				break;
-			case BOL:
-				if(s == bol)
-					break;
-				p = runestrchr(s, '\n');
-				if(p == 0 || s == j->reol)
-					return match;
-				s = p+1;
-				break;
+	for(r = L'☺'; r != L'\0'; rsp++) {
+		r = *rsp;
+		gen++;
+		if(matchgen == 0) {
+			if(avail == nil) {
+				assert(pool < p->threads + p->nthr);
+				t = pool++;
+			} else {
+				t = avail;
+				avail = avail->next;
 			}
+			t->i = p->startinst;
+			if(msize > 0)
+				memset(t->sem, 0, sizeof(Resub)*msize);
+			t->next = nil;
+			t->gen = gen;
+			*clist->tail = t;
+			clist->tail = &t->next;
 		}
-
-		r = *s;
-
-		/* switch run lists */
-		tl = j->relist[flag];
-		tle = j->reliste[flag];
-		nl = j->relist[flag^=1];
-		nle = j->reliste[flag];
-		nl->inst = 0;
-
-		/* Add first instruction to current list */
-		_rrenewemptythread(tl, progp->startinst, ms, s);
-
-		/* Execute machine until current list is empty */
-		for(tlp=tl; tlp->inst; tlp++){
-			for(inst=tlp->inst; ; inst = inst->next){
-				switch(inst->type){
-				case RUNE:	/* regular character */
-					if(inst->r == r)
-						if(_renewthread(nl, inst->next, ms, &tlp->se)==nle)
-							return -1;
-					break;
-				case LBRA:
-					tlp->se.m[inst->subid].rsp = s;
-					continue;
-				case RBRA:
-					tlp->se.m[inst->subid].rep = s;
-					continue;
-				case ANY:
-					if(r != '\n')
-						if(_renewthread(nl, inst->next, ms, &tlp->se)==nle)
-							return -1;
-					break;
-				case ANYNL:
-					if(_renewthread(nl, inst->next, ms, &tlp->se)==nle)
-							return -1;
-					break;
-				case BOL:
-					if(s == bol || *(s-1) == '\n')
-						continue;
-					break;
-				case EOL:
-					if(s == j->reol || r == 0 || r == '\n')
-						continue;
-					break;
-				case CCLASS:
-					ep = inst->cp->end;
-					for(rp = inst->cp->spans; rp < ep; rp += 2)
-						if(r >= rp[0] && r <= rp[1]){
-							if(_renewthread(nl, inst->next, ms, &tlp->se)==nle)
-								return -1;
-							break;
-						}
-					break;
-				case NCCLASS:
-					ep = inst->cp->end;
-					for(rp = inst->cp->spans; rp < ep; rp += 2)
-						if(r >= rp[0] && r <= rp[1])
-							break;
-					if(rp == ep)
-						if(_renewthread(nl, inst->next, ms, &tlp->se)==nle)
-							return -1;
-					break;
-				case OR:
-					/* evaluate right choice later */
-					if(_renewthread(tlp, inst->right, ms, &tlp->se) == tle)
-						return -1;
-					/* efficiency: advance and re-evaluate */
-					continue;
-				case END:	/* Match! */
-					match = 1;
-					tlp->se.m[0].rep = s;
-					if(mp != 0)
-						_renewmatch(mp, ms, &tlp->se);
-					break;
-				}
-				break;
-			}
-		}
-		if(s == j->reol)
+		t = clist->head;
+		if(t == nil)
 			break;
-		checkstart = j->startchar && nl->inst==0;
-		s++;
-	}while(r);
-	return match;
-}
-
-static int
-rregexec2(Reprog *progp,	/* program to run */
-	Rune *bol,	/* string to run machine on */
-	Resub *mp,	/* subexpression elements */
-	int ms,		/* number of elements at mp */
-	Reljunk *j
-)
-{
-	Relist relist0[5*LISTSIZE], relist1[5*LISTSIZE];
-
-	/* mark space */
-	j->relist[0] = relist0;
-	j->relist[1] = relist1;
-	j->reliste[0] = relist0 + nelem(relist0) - 2;
-	j->reliste[1] = relist1 + nelem(relist1) - 2;
-
-	return rregexec1(progp, bol, mp, ms, j);
-}
-
-extern int
-rregexec(Reprog *progp,	/* program to run */
-	Rune *bol,	/* string to run machine on */
-	Resub *mp,	/* subexpression elements */
-	int ms)		/* number of elements at mp */
-{
-	Reljunk j;
-	Relist relist0[LISTSIZE], relist1[LISTSIZE];
-	int rv;
-
-	/*
- 	 *  use user-specified starting/ending location if specified
-	 */
-	j.rstarts = bol;
-	j.reol = 0;
-	if(mp && ms>0){
-		if(mp->sp)
-			j.rstarts = mp->rsp;
-		if(mp->ep)
-			j.reol = mp->rep;
+		ci = t->i;
+Again:
+		if(ci->gen == gen)
+			goto Done;
+		ci->gen = gen;
+		switch(ci->op) {
+		case ORUNE:
+			if(r != ci->r)
+				goto Done;
+		case OANY: /* fallthrough */
+			next = t->next;
+			t->i = ci + 1;
+			t->next = nil;
+			*nlist->tail = t;
+			nlist->tail = &t->next;
+			goto Next;
+		case OCLASS:
+		Class:
+			if(r < ci->r)
+				goto Done;
+			if(r > ci->r1) {
+				ci++;
+				goto Class;
+			}
+			next = t->next;
+			t->i = ci->a;
+			t->next = nil;
+			*nlist->tail = t;
+			nlist->tail = &t->next;
+			goto Next;
+		case ONOTNL:
+			if(r != L'\n') {
+				ci++;
+				goto Again;
+			}
+			goto Done;
+		case OBOL:
+			if(rsp == str || rsp[-1] == L'\n') {
+				ci++;
+				goto Again;
+			}
+			goto Done;
+		case OEOL:
+			if(r == L'\n' || r == L'\0' && rep == nil) {
+				ci++;
+				goto Again;
+			}
+			goto Done;
+		case OJMP:
+			ci = ci->a;
+			goto Again;
+		case OSPLIT:
+			if(avail == nil) {
+				assert(pool < p->threads + p->nthr);
+				next = pool++;
+			} else {
+				next = avail;
+				avail = avail->next;
+			}
+			next->i = ci->b;
+			if(msize > 0)
+				memcpy(next->sem, t->sem, sizeof(Resub)*msize);
+			next->next = t->next;
+			next->gen = t->gen;
+			t->next = next;
+			ci = ci->a;
+			goto Again;
+		case OSAVE:
+			if(ci->sub < msize)
+				t->sem[ci->sub].rsp = rsp;
+			ci++;
+			goto Again;
+		case OUNSAVE:
+			if(ci->sub == 0) {
+				matchgen = t->gen;
+				if(sem != nil && msize > 0) {
+					memcpy(sem, t->sem, sizeof(Resub)*msize);
+					sem->rep = rsp;
+				}
+				goto Done;
+			}
+			if(ci->sub < msize)
+				t->sem[ci->sub].rep = rsp;
+			ci++;
+			goto Again;
+		Done:
+			next = t->next;
+			t->next = avail;
+			avail = t;
+		Next:
+			if(next == nil)
+				break;
+			if(matchgen && next->gen > matchgen) {
+				*clist->tail = avail;
+				avail = next;
+				break;
+			}
+			t = next;
+			ci = t->i;
+			goto Again;
+		}
+		tmp = clist;
+		clist = nlist;
+		nlist = tmp;
+		nlist->head = nil;
+		nlist->tail = &nlist->head;
 	}
-	j.starttype = 0;
-	j.startchar = 0;
-	if(progp->startinst->type == RUNE && progp->startinst->r < Runeself) {
-		j.starttype = RUNE;
-		j.startchar = progp->startinst->r;
-	}
-	if(progp->startinst->type == BOL)
-		j.starttype = BOL;
-
-	/* mark space */
-	j.relist[0] = relist0;
-	j.relist[1] = relist1;
-	j.reliste[0] = relist0 + nelem(relist0) - 2;
-	j.reliste[1] = relist1 + nelem(relist1) - 2;
-
-	rv = rregexec1(progp, bol, mp, ms, &j);
-	if(rv >= 0)
-		return rv;
-	rv = rregexec2(progp, bol, mp, ms, &j);
-	if(rv >= 0)
-		return rv;
-	return -1;
+	if(rep != nil)
+		*rep = endr;
+	return matchgen > 0 ? 1 : 0;
 }
