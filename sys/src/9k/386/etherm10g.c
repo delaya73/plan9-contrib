@@ -781,10 +781,10 @@ setmem(Pcidev *p, Ctlr *c)
 	raddr = p->mem[0].bar & ~0x0F;
 	mem = vmap(raddr, p->mem[0].size);
 	if(mem == nil){
-		print("m10g: can't map %8.8lux\n", p->mem[0].bar);
+		print("m10g: can't map %8.8llux\n", p->mem[0].bar);
 		return -1;
 	}
-	dprint("%llux <- vmap(mem[0].size = %ux)\n", raddr, p->mem[0].size);
+	dprint("%llux <- vmap(mem[0].size = %lux)\n", raddr, p->mem[0].size);
 	c->port = raddr;
 	c->ram = mem;
 	c->cmd = malign(sizeof *c->cmd);

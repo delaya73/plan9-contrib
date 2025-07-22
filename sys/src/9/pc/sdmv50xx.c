@@ -1502,19 +1502,16 @@ rdinfo(char *p, char *e, ushort *info)
 	return p;
 }
 
-static int
-mv50rctl(SDunit *unit, char *p, int l)
+static char*
+mv50rctl(SDunit *unit, char *p, char *e)
 {
-	char *e, *op;
 	Ctlr *ctlr;
 	Drive *drive;
 
 	if((ctlr = unit->dev->ctlr) == nil)
-		return 0;
+		return p;
 	drive = &ctlr->drive[unit->subno];
 
-	e = p+l;
-	op = p;
 	if(drive->state == Dready){
 		p = seprint(p, e, "model    %s\n", drive->model);
 		p = seprint(p, e, "serial   %s\n", drive->serial);
@@ -1528,7 +1525,7 @@ mv50rctl(SDunit *unit, char *p, int l)
 	p = rdregs(p, e, drive->bridge, regsbridge, nelem(regsbridge), nil);
 	p = rdregs(p, e, drive->edma, regsedma, nelem(regsedma), nil);
 
-	return p-op;
+	return p;
 }
 
 static int

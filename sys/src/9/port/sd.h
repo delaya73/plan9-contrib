@@ -4,6 +4,7 @@
 #include <diskcmd.h>
 
 typedef struct SDev SDev;
+typedef struct SDfile SDfile;
 typedef struct SDifc SDifc;
 typedef struct SDio SDio;
 typedef struct SDpart SDpart;
@@ -23,6 +24,13 @@ struct SDpart {
 	SDperm;
 	int	valid;
 	ulong	vers;
+};
+
+typedef long SDrw(SDunit*, Chan*, void*, long, vlong);
+struct SDfile {
+	SDperm;
+	SDrw	*r;
+	SDrw	*w;
 };
 
 struct SDunit {
@@ -45,6 +53,8 @@ struct SDunit {
 	int	state;
 	SDreq*	req;
 	SDperm	rawperm;
+	SDfile	efile[5];
+	int	nefile;
 };
 
 /*
@@ -77,7 +87,7 @@ struct SDifc {
 	int	(*verify)(SDunit*);
 	int	(*online)(SDunit*);
 	int	(*rio)(SDreq*);
-	int	(*rctl)(SDunit*, char*, int);
+	char*	(*rctl)(SDunit*, char*, char*);
 	int	(*wctl)(SDunit*, Cmdbuf*);
 
 	long	(*bio)(SDunit*, int, int, void*, long, uvlong);
@@ -173,6 +183,7 @@ extern int sdsetsense(SDreq*, int, int, int, int);
 extern int sdmodesense(SDreq*, uchar*, void*, int);
 extern int sdfakescsi(SDreq*, void*, int);
 extern int sdfakescsirw(SDreq*, uvlong*, int*, int*);
+extern int sdaddfile(SDunit*, char*, int, char*, SDrw*, SDrw*);
 
 /* sdscsi.c */
 extern int scsiverify(SDunit*);

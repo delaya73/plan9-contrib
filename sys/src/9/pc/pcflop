@@ -65,6 +65,7 @@ link
 #	ether82598	pci
 	ethervirtio	pci
 	ethervirtio10	pci
+	sdnvme		pci
 
 	ethermedium
 	pcmciamodem

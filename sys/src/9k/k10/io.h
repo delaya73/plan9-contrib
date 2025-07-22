@@ -227,8 +227,9 @@ typedef struct Pcisiz Pcisiz;
 struct Pcisiz
 {
 	Pcidev*	dev;
-	int	siz;
+	vlong	siz;
 	int	bar;
+	int	typ;
 };
 
 typedef struct Pcidev Pcidev;
@@ -248,13 +249,13 @@ struct Pcidev
 	uchar	ltr;
 
 	struct {
-		ulong	bar;		/* base address */
-		int	size;
+		uvlong	bar;		/* base address */
+		vlong	size;
 	} mem[6];
 
 	struct {
-		ulong	bar;
-		int	size;
+		uvlong	bar;
+		vlong	size;
 	} rom;
 	uchar	intl;			/* interrupt line */
 
@@ -264,8 +265,8 @@ struct Pcidev
 	Pcidev*	parent;			/* up a bus */
 	Pcidev*	bridge;			/* down a bus */
 	struct {
-		ulong	bar;
-		int	size;
+		uvlong	bar;
+		vlong	size;
 	} ioa, mema;
 
 	int	pmrb;			/* power management register block */

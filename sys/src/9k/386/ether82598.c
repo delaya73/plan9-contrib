@@ -1151,7 +1151,7 @@ scan(void)
 		io = p->mem[pciregs].bar & ~0xf;
 		mem = vmap(io, p->mem[pciregs].size);
 		if(mem == nil){
-			print("i82598: can't map regs %#lux\n",
+			print("i82598: can't map regs %#llux\n",
 				p->mem[pciregs].bar);
 			continue;
 		}
@@ -1159,7 +1159,7 @@ scan(void)
 		iomsi = p->mem[pcimsix].bar & ~0xf;
 		memmsi = vmap(iomsi, p->mem[pcimsix].size);
 		if(memmsi == nil){
-			print("i82598: can't map msi-x regs %#lux\n",
+			print("i82598: can't map msi-x regs %#llux\n",
 				p->mem[pcimsix].bar);
 			vunmap(mem, p->mem[pciregs].size);
 			continue;

@@ -430,6 +430,7 @@ pcilscan(int bno, Pcidev** list)
 			case 0x03:		/* display controller */
 				pcivga = 1;
 				/* fall through */
+			case 0x00:		/* prehistoric */
 			case 0x01:		/* mass storage controller */
 			case 0x02:		/* network controller */
 			case 0x04:		/* multimedia device */
@@ -439,6 +440,11 @@ pcilscan(int bno, Pcidev** list)
 			case 0x0A:		/* docking stations */
 			case 0x0B:		/* processors */
 			case 0x0C:		/* serial bus controllers */
+			case 0x0D:		/* wireless controllers */
+			case 0x0E:		/* intelligent I/O controllers */
+			case 0x0F:		/* sattelite communication controllers */
+			case 0x10:		/* encryption/decryption controllers */
+			case 0x11:		/* signal processing controllers */
 				if((hdt & 0x7F) != 0)
 					break;
 				rno = PciBAR0 - 4;
@@ -449,7 +455,6 @@ pcilscan(int bno, Pcidev** list)
 				}
 				break;
 
-			case 0x00:
 			case 0x05:		/* memory controller */
 			case 0x06:		/* bridge device */
 			default:

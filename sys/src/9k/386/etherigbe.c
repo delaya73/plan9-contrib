@@ -1954,7 +1954,7 @@ igbepci(void)
 
 		mem = vmap(p->mem[0].bar & ~0x0F, p->mem[0].size);
 		if(mem == nil){
-			print("igbe: can't map %#8.8lux\n", p->mem[0].bar);
+			print("igbe: can't map %#8.8llux\n", p->mem[0].bar);
 			continue;
 		}
 		switch(p->cls){

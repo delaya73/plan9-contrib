@@ -94,6 +94,7 @@ misc
 	sdaoe
 	sdvirtio	pci sdscsi
 	sdvirtio10	pci sdscsi
+	sdnvme		pci
 
 	uarti8250
 	uartpci		pci

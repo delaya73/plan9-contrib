@@ -38,6 +38,7 @@ enum {
 	Qctl		= Qunitbase,
 	Qraw,
 	Qpart,
+	Qextra,
 
 	TypeLOG		= 4,
 	NType		= (1<<TypeLOG),
@@ -403,11 +404,12 @@ sd2gen(Chan* c, int i, Dir* dp)
 {
 	Qid q;
 	uvlong l;
+	SDfile *e;
 	SDpart *pp;
 	SDperm *perm;
 	SDunit *unit;
 	SDev *sdev;
-	int rv;
+	int rv, t;
 
 	sdev = sdgetdev(DEV(c->qid));
 	assert(sdev);
@@ -449,10 +451,43 @@ sd2gen(Chan* c, int i, Dir* dp)
 		devdir(c, q, pp->name, l, pp->user, pp->perm, dp);
 		rv = 1;
 		break;
+
+	case Qextra:
+		t = PART(c->qid);
+		if(t >= unit->nefile)
+			break;
+		mkqid(&q, QID(DEV(c->qid), UNIT(c->qid), PART(c->qid), Qextra),
+			unit->vers, QTFILE);
+		e = unit->efile + t;
+		if(emptystr(e->user))
+			kstrdup(&e->user, eve);
+		devdir(c, q, e->name, 0, e->user, e->perm, dp);
+		rv = 1;
+		break;
 	}
 
 	decref(&sdev->r);
 	return rv;
+}
+
+static int
+efilegen(Chan *c, SDunit *unit, int i, Dir *dp)
+{
+	Qid q;
+	SDfile *e;
+
+	i -= SDnpart;
+	if(unit->nefile == 0 || i >= unit->nefile)
+		return -1;
+	if(i < 0)
+		return 0;
+	e = unit->efile + i;
+	if(emptystr(e->user))
+		kstrdup(&e->user, eve);
+	mkqid(&q, QID(DEV(c->qid), UNIT(c->qid), i, Qextra),
+		unit->vers, QTFILE);
+	devdir(c, q, e->name, 0, e->user, e->perm, dp);
+	return 1;
 }
 
 static int
@@ -560,21 +595,17 @@ sdgen(Chan* c, char*, Dirtab*, int, int s, Dir* dp)
 		i = s+Qunitbase;
 		if(i < Qpart){
 			r = sd2gen(c, i, dp);
-			qunlock(&unit->ctl);
-			decref(&sdev->r);
-			return r;
+			goto ReleaseUnit;
 		}
 		i -= Qpart;
 		if(unit->part == nil || i >= unit->npart){
-			qunlock(&unit->ctl);
-			decref(&sdev->r);
-			break;
+			r = efilegen(c, unit, i, dp);
+			goto ReleaseUnit;
 		}
 		pp = &unit->part[i];
 		if(!pp->valid){
-			qunlock(&unit->ctl);
-			decref(&sdev->r);
-			return 0;
+			r = 0;
+			goto ReleaseUnit;
 		}
 		l = (pp->end - pp->start) * unit->secsize;
 		mkqid(&q, QID(DEV(c->qid), UNIT(c->qid), i, Qpart),
@@ -582,12 +613,12 @@ sdgen(Chan* c, char*, Dirtab*, int, int s, Dir* dp)
 		if(emptystr(pp->user))
 			kstrdup(&pp->user, eve);
 		devdir(c, q, pp->name, l, pp->user, pp->perm, dp);
-		qunlock(&unit->ctl);
-		decref(&sdev->r);
-		return 1;
+		r = 1;
+		goto ReleaseUnit;
 	case Qraw:
 	case Qctl:
 	case Qpart:
+	case Qextra:
 		if((sdev = sdgetdev(DEV(c->qid))) == nil){
 			devdir(c, q, "unavailable", 0, eve, 0, dp);
 			return 1;
@@ -595,6 +626,7 @@ sdgen(Chan* c, char*, Dirtab*, int, int s, Dir* dp)
 		unit = sdev->unit[UNIT(c->qid)];
 		qlock(&unit->ctl);
 		r = sd2gen(c, TYPE(c->qid), dp);
+	ReleaseUnit:
 		qunlock(&unit->ctl);
 		decref(&sdev->r);
 		return r;
@@ -674,6 +706,7 @@ sdopen(Chan* c, int omode)
 
 	switch(TYPE(c->qid)){
 	case Qctl:
+	case Qextra:
 		c->qid.vers = unit->vers;
 		break;
 	case Qraw:
@@ -731,7 +764,7 @@ sdclose(Chan* c)
 static long
 sdbio(Chan* c, int write, char* a, long len, uvlong off)
 {
-	int nchange;
+	int nchange, locked;
 	long l;
 	uchar *b;
 	SDpart *pp;
@@ -793,7 +826,8 @@ sdbio(Chan* c, int write, char* a, long len, uvlong off)
 		poperror();
 		return 0;
 	}
-	if(!(unit->inquiry[1] & SDinq1removable)){
+	locked = (unit->inquiry[1] & SDinq1removable) != 0;
+	if(!locked){
 		qunlock(&unit->ctl);
 		poperror();
 	}
@@ -845,7 +879,7 @@ sdbio(Chan* c, int write, char* a, long len, uvlong off)
 	sdfree(b);
 	poperror();
 
-	if(unit->inquiry[1] & SDinq1removable){
+	if(locked){
 		qunlock(&unit->ctl);
 		poperror();
 	}
@@ -1142,6 +1176,39 @@ sdfakescsirw(SDreq *r, uvlong *llba, int *nsec, int *rwp)
 }
 
 static long
+extrarw(Chan *c, int write, void *a, long n, vlong off)
+{
+	int i;
+	SDrw *f;
+	SDev *sdev;
+	SDunit *unit;
+
+	sdev = sdgetdev(DEV(c->qid));
+	if(sdev == nil)
+		error(Enonexist);
+	if(waserror()){
+		decref(&sdev->r);
+		nexterror();
+	}
+	unit = sdev->unit[UNIT(c->qid)];
+	if(unit->vers != c->qid.vers)
+		error(Echange);
+	unit = sdev->unit[UNIT(c->qid)];
+	i = PART(c->qid);
+	if(i >= unit->nefile)
+		error(Enonexist);
+	f = unit->efile[i].r;
+	if(write)
+		f = unit->efile[i].w;
+	if(i >= unit->nefile || f == nil)
+		error(Eperm);
+	n = f(unit, c, a, n, off);
+	poperror();
+	decref(&sdev->r);
+	return n;
+}
+
+static long
 sdread(Chan *c, void *a, long n, vlong off)
 {
 	char *p, *e, *buf;
@@ -1183,11 +1250,11 @@ sdread(Chan *c, void *a, long n, vlong off)
 
 		unit = sdev->unit[UNIT(c->qid)];
 		m = 16*1024;	/* room for register dumps */
-		p = smalloc(m);
+		p = buf = smalloc(m);
+		e = p + m;
 		if(p == nil)
 			error(Enomem);
-		l = snprint(p, m, "inquiry %.48s\n",
-			(char*)unit->inquiry+8);
+		p = seprint(p, e, "inquiry %.48s\n", (char*)unit->inquiry+8);
 		qlock(&unit->ctl);
 		/*
 		 * If there's a device specific routine it must
@@ -1195,27 +1262,24 @@ sdread(Chan *c, void *a, long n, vlong off)
 		 * and the garscadden trains.
 		 */
 		if(unit->dev->ifc->rctl)
-			l += unit->dev->ifc->rctl(unit, p+l, m-l);
+			p = (*unit->dev->ifc->rctl)(unit, p, e);
 		if(unit->sectors == 0)
 			sdinitpart(unit);
 		if(unit->sectors){
 			if(unit->dev->ifc->rctl == nil)
-				l += snprint(p+l, m-l,
-					"geometry %llud %lud\n",
+				p = seprint(p, e, "geometry %llud %lud\n",
 					unit->sectors, unit->secsize);
-			pp = unit->part;
 			for(i = 0; i < unit->npart; i++){
+				pp = &unit->part[i];
 				if(pp->valid)
-					l += snprint(p+l, m-l,
-						"part %s %llud %llud\n",
+					p = seprint(p, e, "part %s %llud %llud\n",
 						pp->name, pp->start, pp->end);
-				pp++;
 			}
 		}
 		qunlock(&unit->ctl);
 		decref(&sdev->r);
-		l = readstr(offset, a, n, p);
-		free(p);
+		l = readstr(offset, a, n, buf);
+		free(buf);
 		return l;
 
 	case Qraw:
@@ -1249,6 +1313,8 @@ sdread(Chan *c, void *a, long n, vlong off)
 
 	case Qpart:
 		return sdbio(c, 0, a, n, off);
+	case Qextra:
+		return extrarw(c, 0, a, n, off);
 	}
 }
 
@@ -1417,6 +1483,8 @@ sdwrite(Chan* c, void* a, long n, vlong off)
 		break;
 	case Qpart:
 		return sdbio(c, 1, a, n, off);
+	case Qextra:
+		return extrarw(c, 1, a, n, off);
 	}
 
 	return n;
@@ -1718,4 +1786,33 @@ legacytopctl(Cmdbuf *cb)
 	if(cd.on && cd.cf.type == nil)
 		error(Ebadarg);
 	sdconfig(cd.on, cd.spec, &cd.cf);
+}
+
+int
+sdaddfile(SDunit *unit, char *s, int perm, char *u, SDrw *r, SDrw *w)
+{
+	int i;
+	SDfile *e;
+	static Lock lk;
+
+	if(unit == nil)
+		return -1;
+	lock(&lk);
+	for(i = 0; i < unit->nefile; i++)
+		if(strcmp(unit->efile[i].name, s) == 0)
+			break;
+	if(i >= nelem(unit->efile)){
+		unlock(&lk);
+		return -1;
+	}
+	if(i >= unit->nefile)
+		unit->nefile = i + 1;
+	e = unit->efile + i;
+	kstrdup(&e->name, s);
+	kstrdup(&e->user, u);
+	e->perm = perm;
+	e->r = r;
+	e->w = w;
+	unlock(&lk);
+	return 0;
 }

@@ -41,6 +41,7 @@ devprobe.$O:	../port/netif.h probe.h
 devproc.$O:	../port/error.h ../port/edf.h
 devproc.$O:	/sys/include/tos.h /sys/include/trace.h /$objtype/include/ureg.h
 devsd.$O:	../port/error.h ../port/sd.h
+sdnvme.$O:	../port/error.h io.h /$objtype/include/ureg.h ../port/sd.h
 devsrv.$O:	../port/error.h
 devssl.$O:	../port/error.h
 devssl.$O:	/sys/include/libsec.h

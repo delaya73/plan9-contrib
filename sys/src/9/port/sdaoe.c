@@ -520,16 +520,13 @@ pflag(char *s, char *e, uchar f)
 	return seprint(s, e, "\n");
 }
 
-static int
-aoerctl(SDunit *u, char *p, int l)
+static char*
+aoerctl(SDunit *u, char *p, char *e)
 {
 	Ctlr *c;
-	char *e, *op;
 
 	if((c = u->dev->ctlr) == nil)
-		return 0;
-	e = p+l;
-	op = p;
+		return p;
 
 	p = seprint(p, e, "model\t%s\n", c->model);
 	p = seprint(p, e, "serial\t%s\n", c->serial);
@@ -543,7 +540,7 @@ aoerctl(SDunit *u, char *p, int l)
 	p = seprint(p, e, "flag	");
 	p = pflag(p, e, c->feat);
 	p = seprint(p, e, "geometry %llud %d\n", c->sectors, Aoesectsz);
-	return p-op;
+	return p;
 }
 
 static int

@@ -57,6 +57,7 @@ misc +dev
 #sd +dev
 #	sdiahci		pci sdscsi
 #	sdaoe		sdscsi
+#	sdnvme		pci
 
 #
 #boot cpu

@@ -2227,43 +2227,35 @@ atadisable(SDev *sdev)
 	return 0;
 }
 
-static int
-atarctl(SDunit* unit, char* p, int l)
+static char*
+atarctl(SDunit* unit, char *p, char *e)
 {
-	int n;
 	Ctlr *ctlr;
 	Drive *drive;
 
 	if((ctlr = unit->dev->ctlr) == nil || ctlr->drive[unit->subno] == nil)
-		return 0;
+		return p;
 	drive = ctlr->drive[unit->subno];
 
 	qlock(drive);
-	n = snprint(p, l, "config %4.4uX capabilities %4.4uX",
-		drive->info[Iconfig], drive->info[Icapabilities]);
+	p = seprint(p, e, "config %4.4uX capabilities %4.4uX", drive->info[Iconfig], drive->info[Icapabilities]);
 	if(drive->dma)
-		n += snprint(p+n, l-n, " dma %8.8uX dmactl %8.8uX",
-			drive->dma, drive->dmactl);
+		p = seprint(p, e, " dma %8.8uX dmactl %8.8uX", drive->dma, drive->dmactl);
 	if(drive->rwm)
-		n += snprint(p+n, l-n, " rwm %ud rwmctl %ud",
-			drive->rwm, drive->rwmctl);
+		p = seprint(p, e, " rwm %ud rwmctl %ud", drive->rwm, drive->rwmctl);
 	if(drive->flags&Lba48)
-		n += snprint(p+n, l-n, " lba48always %s",
-			(drive->flags&Lba48always) ? "on" : "off");
-	n += snprint(p+n, l-n, "\n");
-	n += snprint(p+n, l-n, "interrupts read %lud write %lud cmds %lud\n",
-		drive->intrd, drive->intwr, drive->intcmd);
+		p = seprint(p, e, " lba48always %s", (drive->flags&Lba48always) ? "on" : "off");
+	p = seprint(p, e, "\n");
+	p = seprint(p, e, "interrupts read %lud write %lud cmds %lud\n", drive->intrd, drive->intwr, drive->intcmd);
 	if(drive->sectors){
-		n += snprint(p+n, l-n, "geometry %lld %d",
-			drive->sectors, drive->secsize);
+		p = seprint(p, e, "geometry %llud %d", drive->sectors, drive->secsize);
 		if(drive->pkt == 0)
-			n += snprint(p+n, l-n, " %d %d %d",
-				drive->c, drive->h, drive->s);
-		n += snprint(p+n, l-n, "\n");
+			p = seprint(p, e, " %d %d %d", drive->c, drive->h, drive->s);
+		p = seprint(p, e, "\n");
 	}
 	qunlock(drive);
 
-	return n;
+	return p;
 }
 
 static int

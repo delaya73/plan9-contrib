@@ -265,28 +265,27 @@ mmconline(SDunit *unit)
 	return 1;
 }
 
-static int
-mmcrctl(SDunit *unit, char *p, int l)
+static char*
+mmcrctl(SDunit *unit, char *p, char *e)
 {
 	Ctlr *ctl;
-	int i, n;
+	int i;
 
 	ctl = unit->dev->ctlr;
 	assert(unit->subno == 0);
 	if(unit->sectors == 0){
 		mmconline(unit);
 		if(unit->sectors == 0)
-			return 0;
+			return p;
 	}
-	n = snprint(p, l, "rca %4.4ux ocr %8.8ux\ncid ", ctl->rca, ctl->ocr);
+	p = seprint(p, e, "rca %4.4ux ocr %8.8ux\ncid ", ctl->rca, ctl->ocr);
 	for(i = nelem(ctl->cid)-1; i >= 0; i--)
-		n += snprint(p+n, l-n, "%8.8ux", ctl->cid[i]);
-	n += snprint(p+n, l-n, " csd ");
+		p = seprint(p, e, "%8.8ux", ctl->cid[i]);
+	p = seprint(p, e, " csd ");
 	for(i = nelem(ctl->csd)-1; i >= 0; i--)
-		n += snprint(p+n, l-n, "%8.8ux", ctl->csd[i]);
-	n += snprint(p+n, l-n, "\ngeometry %llud %ld %lld 255 63\n",
-		unit->sectors, unit->secsize, unit->sectors / (255*63));
-	return n;
+		p = seprint(p, e, "%8.8ux", ctl->csd[i]);
+	p = seprint(p, e, "\ngeometry %llud %ld %lld 255 63\n", unit->sectors, unit->secsize, unit->sectors / (255*63));
+	return p;
 }
 
 static long

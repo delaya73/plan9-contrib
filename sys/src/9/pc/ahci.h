@@ -308,7 +308,7 @@ enum {
 };
 
 enum {
-	Dllba 	= 1,
+	Dllba 	= 1<<0,
 	Dsmart	= 1<<1,
 	Dpower	= 1<<2,
 	Dnop	= 1<<3,

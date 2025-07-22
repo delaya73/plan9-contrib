@@ -2374,25 +2374,22 @@ capfmt(char *p, char *e, Htab *t, int n, ulong cap)
 	return p;
 }
 
-static int
-iarctl(SDunit *u, char *p, int l)
+static char*
+iarctl(SDunit *u, char *p, char *e)
 {
 	char buf[32];
-	char *e, *op;
 	Aport *o;
 	Ctlr *c;
 	Drive *d;
 
 	c = u->dev->ctlr;
 	if(c == nil) {
-print("iarctl: nil u->dev->ctlr\n");
-		return 0;
+		print("iarctl: nil u->dev->ctlr\n");
+		return p;
 	}
 	d = c->drive[u->subno];
 	o = d->port;
 
-	e = p+l;
-	op = p;
 	if(d->state == Dready){
 		p = seprint(p, e, "model\t%s\n", d->model);
 		p = seprint(p, e, "serial\t%s\n", d->serial);
@@ -2421,7 +2418,7 @@ print("iarctl: nil u->dev->ctlr\n");
 	if(d->unit == nil)
 		panic("iarctl: nil d->unit");
 	p = seprint(p, e, "geometry %llud %lud\n", d->sectors, d->unit->secsize);
-	return p - op;
+	return p;
 }
 
 static void

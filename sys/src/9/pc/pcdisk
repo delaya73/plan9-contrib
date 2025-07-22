@@ -70,6 +70,7 @@ link
 	etherwavelan	wavelan devi82365 cis pci
 	ethervirtio		pci
 	ethervirtio10		pci
+	sdnvme		pci
 
 	ethermedium
 	pcmciamodem
