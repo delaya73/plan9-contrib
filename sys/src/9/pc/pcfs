@@ -63,7 +63,6 @@ misc
 	sdmylex		pci sdscsi
 	sdvirtio	pci sdscsi
 	sdvirtio10	pci sdscsi
-	sdnvme		pci
 
 ip
 	tcp
