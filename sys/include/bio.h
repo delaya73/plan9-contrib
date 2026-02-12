@@ -32,6 +32,7 @@ struct	Biobufhdr
 	uchar*	bbuf;		/* pointer to beginning of buffer */
 	uchar*	ebuf;		/* pointer to end of buffer */
 	uchar*	gbuf;		/* pointer to good data in buf */
+	void	*aux;		/* user data */
 };
 
 struct	Biobuf
@@ -58,6 +59,7 @@ int	Binits(Biobufhdr*, int, int, uchar*, int);
 int	Blinelen(Biobufhdr*);
 vlong	Boffset(Biobufhdr*);
 Biobuf*	Bopen(char*, int);
+Biobuf*	Bfdopen(int, int);
 int	Bprint(Biobufhdr*, char*, ...);
 int	Bvprint(Biobufhdr*, char*, va_list);
 int	Bputc(Biobufhdr*, int);

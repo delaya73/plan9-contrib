@@ -27,6 +27,7 @@ LIBS=\
 	libmemlayer\
 	libmp\
 	libndb\
+	libpcm\
 	liboventi\
 	libplumb\
 	libregexp\

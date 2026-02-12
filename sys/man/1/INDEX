@@ -36,6 +36,7 @@ ap ap
 ar ar
 ascii ascii
 unicode ascii
+play play
 awk awk
 basename basename
 bc bc
@@ -328,3 +329,6 @@ xd xd
 yacc yacc
 diffy yesterday
 yesterday yesterday
+play play
+mus	mus
+dmid dmid

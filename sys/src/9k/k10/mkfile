@@ -76,6 +76,10 @@ sdiahci.$O:	../386/ahci.h
 
 random.$O:	../port/error.h
 
+audioac97.$O:	../port/error.h ../port/audioif.h
+audioac97mix.$O:	../port/error.h ../port/audioif.h
+audiohda.$O:	../port/error.h ../port/audioif.h
+
 ${objtype}l.h:DQ:	$objtype.h
 	rc ../mk/mkenum $objtype.h > $target
 

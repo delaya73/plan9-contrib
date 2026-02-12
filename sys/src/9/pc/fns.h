@@ -21,10 +21,14 @@ int	cpuidentify(void);
 void	cpuidprint(void);
 void	(*cycles)(uvlong*);
 void	delay(int);
+void*	dmabva(int);
 int	dmacount(int);
 int	dmadone(int);
 void	dmaend(int);
 int	dmainit(int, int);
+#define DMAWRITE 0
+#define DMAREAD 1
+#define DMALOOP 2
 long	dmasetup(int, void*, long, int);
 void	fpclear(void);
 void	fpenv(FPsave*);
@@ -199,8 +203,6 @@ int	xchgw(ushort*, int);
 #define	waserror()	(up->nerrlab++, setlabel(&up->errlab[up->nerrlab-1]))
 #define	KADDR(a)	kaddr(a)
 #define PADDR(a)	paddr((void*)(a))
-
-#define	dcflush(a, b)
 
 #define BIOSSEG(a)	KADDR(((uint)(a))<<4)
 

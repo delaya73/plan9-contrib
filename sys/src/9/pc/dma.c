@@ -18,7 +18,7 @@ struct DMAxfer
 	int	blen;		/* bounce buffer length */
 	void*	va;		/* virtual address destination/src */
 	long	len;		/* bytes to be transferred */
-	int	isread;
+	int	flags;
 };
 
 /*
@@ -81,7 +81,7 @@ _i8237alloc(void)
 	if(i8237dma > 2)
 		i8237dma = 2;
 
-	bva = xspanalloc(64*1024*i8237dma, BY2PG, 64*1024);
+	bva = xspanalloc(64*1024*i8237dma, 0, 64*1024);
 	if(bva == nil || PADDR(bva)+64*1024*i8237dma > 16*MB){
 		/*
 		 * This will panic with the current
@@ -137,9 +137,36 @@ dmainit(int chan, int maxtransfer)
 	xp->bpa = PADDR(xp->bva);
 	xp->blen = maxtransfer;
 	xp->len = 0;
-	xp->isread = 0;
+	xp->flags = 0;
 
 	return 0;
+}
+
+void*
+dmabva(int chan)
+{
+	DMA *dp;
+	DMAxfer *xp;
+
+	dp = &dma[(chan>>2)&1];
+	chan = chan & 3;
+	xp = &dp->x[chan];
+	return xp->bva;
+}
+
+int
+dmacount(int chan)
+{
+	int     retval;
+	DMA     *dp;
+ 
+	dp = &dma[(chan>>2)&1];
+	chan = chan & 3;
+	ilock(dp);
+	retval = inb(dp->count[chan]);
+	retval |= inb(dp->count[chan]) << 8;
+	iunlock(dp);
+	return ((retval<<dp->shift)+1) & 0xFFFF;
 }
 
 /*
@@ -153,7 +180,7 @@ dmainit(int chan, int maxtransfer)
  *  boundaries)
  */
 long
-dmasetup(int chan, void *va, long len, int isread)
+dmasetup(int chan, void *va, long len, int flags)
 {
 	DMA *dp;
 	ulong pa;
@@ -175,22 +202,25 @@ dmasetup(int chan, void *va, long len, int isread)
 			return -1;
 		if(len > xp->blen)
 			len = xp->blen;
-		if(!isread)
+		if(!(flags & DMAREAD))
 			memmove(xp->bva, va, len);
 		xp->va = va;
 		xp->len = len;
-		xp->isread = isread;
+		xp->flags = flags;
 		pa = xp->bpa;
 	}
 	else
 		xp->len = 0;
 
+	mode =	((flags & DMAREAD) ? 0x44 : 0x48) |	/* read or write */
+		((flags & DMALOOP) ? 0x10 : 0) |	/* auto init mode */
+		chan;
+
 	/*
 	 * this setup must be atomic
 	 */
 	ilock(dp);
-	mode = (isread ? 0x44 : 0x48) | chan;
-	outb(dp->mode, mode);	/* single mode dma (give CPU a chance at mem) */
+	outb(dp->mode, mode);
 	outb(dp->page[chan], pa>>16);
 	outb(dp->cbp, 0);		/* set count & address to their first byte */
 	outb(dp->addr[chan], pa>>dp->shift);		/* set address */
@@ -238,7 +268,7 @@ dmaend(int chan)
 	iunlock(dp);
 
 	xp = &dp->x[chan];
-	if(xp->len == 0 || !xp->isread)
+	if(xp->len == 0 || !(xp->flags & DMAREAD))
 		return;
 
 	/*
@@ -247,18 +277,3 @@ dmaend(int chan)
 	memmove(xp->va, xp->bva, xp->len);
 	xp->len = 0;
 }
-
-/*
-int
-dmacount(int chan)
-{
-	int     retval;
-	DMA     *dp;
- 
-	dp = &dma[(chan>>2)&1];
-	outb(dp->cbp, 0);
-	retval = inb(dp->count[chan]);
-	retval |= inb(dp->count[chan]) << 8;
-	return((retval<<dp->shift)+1);
-}
- */

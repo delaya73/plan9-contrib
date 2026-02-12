@@ -81,6 +81,10 @@ link
 	usbohci
 	usbehci		usbehcipc
 
+	audiosb16	dma
+	audioac97	pci audioac97mix
+	audiohda	pci
+
 misc
 	archmp		mp apic mpacpi
 	mtrr

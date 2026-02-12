@@ -8,6 +8,9 @@ TARG=4s\
 	juggle\
 	life\
 	memo\
+	mus\
+	vocenc\
+	vocdec\
 
 OFILES=
 HFILES=
@@ -18,8 +21,7 @@ BIN=/$objtype/bin/games
 DIRS=\
 #	blabs\
 	mahjongg\
-	mp3dec\
-	mp3enc\
+	midi\
 	music\
 	sokoban\
 	sudoku\

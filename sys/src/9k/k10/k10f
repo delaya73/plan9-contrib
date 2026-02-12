@@ -27,6 +27,8 @@ dev +dev
 	vga
 	kbmap
 
+	audio
+
 sd +dev
 	sdata		pci sdscsi
 	sdiahci		pci sdscsi
@@ -66,6 +68,9 @@ link +dev
 #	ht
 
 	realmode
+
+	audioac97	pci audioac97mix
+	audiohda	pci
 
 misc +dev
 	cache

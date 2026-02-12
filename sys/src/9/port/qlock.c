@@ -23,8 +23,6 @@ qlock(QLock *q)
 	if(up != nil && up->nlocks)
 		print("qlock: %#p: nlocks %d\n", getcallerpc(&q), up->nlocks);
 
-	if(q->use.key == 0x55555555)
-		panic("qlock: q %#p, key 5*\n", q);
 	lock(&q->use);
 	rwstats.qlock++;
 	if(!q->locked) {
