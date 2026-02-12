@@ -36,7 +36,6 @@ ap ap
 ar ar
 ascii ascii
 unicode ascii
-play play
 awk awk
 basename basename
 bc bc
