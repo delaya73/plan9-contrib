@@ -17,6 +17,7 @@ Objtype objtype[] = {
 	{"arm",		"5c", "5l", "5", "5.out"},
 	{"amd64",	"6c", "6l", "6", "6.out"},
 	{"386",		"8c", "8l", "8", "8.out"},
+	{"alpha",	"7c", "7l", "7", "7.out"},
 	{"power64",	"9c", "9l", "9", "9.out"},
 	{"sparc",	"kc", "kl", "k", "k.out"},
 	{"power",	"qc", "ql", "q", "q.out"},
