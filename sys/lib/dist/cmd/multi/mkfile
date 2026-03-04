@@ -37,7 +37,6 @@ PIECES=\
 	ext2srv\
 #	fcp\
 	grep\
-	hget\
 	hoc\
 	ls\
 	mc\

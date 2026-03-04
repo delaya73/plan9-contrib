@@ -76,7 +76,7 @@
 		ext2srv	555 sys sys /sys/lib/dist/pc/multi/ext2srv
 		fcp		555	sys	sys
 		grep	555 sys sys /sys/lib/dist/pc/multi/grep
-		hget	555 sys sys /sys/lib/dist/pc/multi/hget
+		hget	555 sys sys /rc/bin/hget
 		hoc	555 sys sys /sys/lib/dist/pc/multi/hoc
 		ls	555 sys sys /sys/lib/dist/pc/multi/ls
 		mc	555 sys sys /sys/lib/dist/pc/multi/mc
